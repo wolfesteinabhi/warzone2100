@@ -211,9 +211,14 @@ bool WZ_Notification_Preferences::removeNotificationPreferencesIf(const std::fun
 
 bool WZ_Notification_Preferences::savePreferences()
 {
-	std::ostringstream stream;
-	stream << mRoot.dump(4) << std::endl;
-	std::string jsonString = stream.str();
+	std::string jsonString;
+	try {
+		jsonString = mRoot.dump(4);
+	}
+	catch (const std::exception &e) {
+		ASSERT(false, "Failed to save JSON to %s with error: %s", mFilename.c_str(), e.what());
+		return false;
+	}
 	saveFile(mFilename.c_str(), jsonString.c_str(), jsonString.size());
 	return true;
 }
@@ -378,6 +383,8 @@ public:
 	void clicked(W_CONTEXT *psContext, WIDGET_KEY key) override;
 	void released(W_CONTEXT *psContext, WIDGET_KEY key) override;
 	void display(int xOffset, int yOffset) override;
+	bool capturesMouseDrag(WIDGET_KEY) override;
+	void mouseDragged(WIDGET_KEY, W_CONTEXT *start, W_CONTEXT *current) override;
 public:
 	Vector2i getDragOffset() const { return dragOffset; }
 	bool isActivelyBeingDragged() const { return isInDragMode; }
@@ -400,7 +407,6 @@ private:
 	bool isModal = false;
 	bool isInDragMode = false;
 	Vector2i dragOffset = {0, 0};
-	Vector2i dragStartMousePos = {0, 0};
 	Vector2i dragOffsetEnded = {0, 0};
 	uint32_t dragStartedTime = 0;
 	uint32_t dragEndedTime = 0;
@@ -671,8 +677,7 @@ std::shared_ptr<W_NOTIFICATION> W_NOTIFICATION::make(WZ_Queued_Notification* req
 	}
 	label_title->setGeometry(titleStartXPos, titleStartYPos, maxTitleWidth, heightOfTitleLabel);
 	label_title->setTextAlignment(WLAB_ALIGNTOPLEFT);
-	// set a custom hit-testing function that ignores all mouse input / clicks
-	label_title->setCustomHitTest([](WIDGET *psWidget, int x, int y) -> bool { return false; });
+	label_title->setTransparentToMouse(true);
 	int titleBottom = label_title->y() + label_title->height();
 	if (isModal)
 	{
@@ -693,8 +698,7 @@ std::shared_ptr<W_NOTIFICATION> W_NOTIFICATION::make(WZ_Queued_Notification* req
 	int heightOfContentsLabel = label_contents->setFormattedString(WzString::fromUtf8(request->notification.contentText), maxContentsWidth, font_regular, WZ_NOTIFICATION_CONTENTS_LINE_SPACING);
 	label_contents->setGeometry(label_contents->x(), label_contents->y(), maxContentsWidth, heightOfContentsLabel);
 	label_contents->setTextAlignment(WLAB_ALIGNTOPLEFT);
-	// set a custom hit-testing function that ignores all mouse input / clicks
-	label_contents->setCustomHitTest([](WIDGET *psWidget, int x, int y) -> bool { return false; });
+	label_contents->setTransparentToMouse(true);
 
 	// Add action buttons
 	std::string dismissLabel = _("Dismiss");
@@ -990,45 +994,44 @@ bool W_NOTIFICATION::calculateNotificationWidgetPos()
 	return false;
 }
 
-/* Run a notification widget */
-void W_NOTIFICATION::run(W_CONTEXT *psContext)
+bool W_NOTIFICATION::capturesMouseDrag(WIDGET_KEY)
 {
-	if (isInDragMode && mouseDown(MOUSE_LMB))
-	{
-		int dragStartY = dragStartMousePos.y;
-		int currMouseY = mouseY();
+	return true;
+}
 
-		// calculate how much to respond to the drag by comparing the start to the current position
-		if (dragStartY > currMouseY)
-		{
-			// dragging up (to close) - respond 1 to 1
-			int distanceY = dragStartY - currMouseY;
-			dragOffset.y = (distanceY > 0) ? -(distanceY) : 0;
-//			debug(LOG_GUI, "dragging up, dragOffset.y: (%d)", dragOffset.y);
-		}
-		else if (currMouseY > dragStartY)
-		{
-			// dragging down
-			const int verticalLimit = 10;
-			int distanceY = currMouseY - dragStartY;
-			dragOffset.y = static_cast<int>(verticalLimit * (1 + log10(float(distanceY) / float(verticalLimit))));
-//			debug(LOG_GUI, "dragging down, dragOffset.y: (%d)", dragOffset.y);
-		}
-		else
-		{
-			dragOffset.y = 0;
-		}
+void W_NOTIFICATION::mouseDragged(WIDGET_KEY, W_CONTEXT *psStartContext, W_CONTEXT *psContext)
+{
+	int dragStartY = psStartContext->my;
+	int currMouseY = psContext->my;
+
+	// calculate how much to respond to the drag by comparing the start to the current position
+	if (dragStartY > currMouseY)
+	{
+		// dragging up (to close) - respond 1 to 1
+		int distanceY = dragStartY - currMouseY;
+		dragOffset.y = (distanceY > 0) ? -(distanceY) : 0;
+//		debug(LOG_GUI, "dragging up, dragOffset.y: (%d) - dragStartY: %d, currMouseY: %d, distanceY: %d", dragOffset.y, dragStartY, currMouseY, distanceY);
+	}
+	else if (currMouseY > dragStartY)
+	{
+		// dragging down
+		const int verticalLimit = 10;
+		int distanceY = currMouseY - dragStartY;
+		dragOffset.y = static_cast<int>(verticalLimit * (1 + log10(float(distanceY) / float(verticalLimit))));
+//		debug(LOG_GUI, "dragging down, dragOffset.y: (%d) - dragStartY: %d, currMouseY: %d, distanceY: %d", dragOffset.y, dragStartY, currMouseY, distanceY);
 	}
 	else
 	{
-		if (isInDragMode && !mouseDown(MOUSE_LMB))
-		{
-//			debug(LOG_GUI, "No longer in drag mode");
-			isInDragMode = false;
-			dragEndedTime = realTime;
-			dragOffsetEnded = dragOffset;
-			notificationDidStopDragOnNotification();
-		}
+		dragOffset.y = 0;
+	}
+}
+
+
+/* Run a notification widget */
+void W_NOTIFICATION::run(W_CONTEXT *psContext)
+{
+	if (!isInDragMode)
+	{
 		if (request && (request->status.state != WZ_Notification_Status::NotificationState::closing))
 		{
 			// decay drag offset
@@ -1059,6 +1062,7 @@ void W_NOTIFICATION::clicked(W_CONTEXT *psContext, WIDGET_KEY key)
 	{
 //		debug(LOG_GUI, "Enabling drag mode");
 		isInDragMode = true;
+		Vector2i dragStartMousePos;
 		dragStartMousePos.x = psContext->mx;
 		dragStartMousePos.y = psContext->my;
 //		debug(LOG_GUI, "dragStartMousePos: (%d x %d)", dragStartMousePos.x, dragStartMousePos.y);
@@ -1073,9 +1077,19 @@ void W_NOTIFICATION::released(W_CONTEXT *psContext, WIDGET_KEY key)
 {
 //	debug(LOG_GUI, "released");
 
+	bool wasInDragMode = isInDragMode;
+	if (isInDragMode)
+	{
+//		debug(LOG_GUI, "No longer in drag mode");
+		isInDragMode = false;
+		dragEndedTime = realTime;
+		dragOffsetEnded = dragOffset;
+		notificationDidStopDragOnNotification();
+	}
+
 	if (request)
 	{
-		if (isInDragMode && dragOffset.y < WZ_NOTIFICATION_DOWN_DRAG_DISCARD_CLICK_THRESHOLD)
+		if (wasInDragMode && dragOffset.y < WZ_NOTIFICATION_DOWN_DRAG_DISCARD_CLICK_THRESHOLD)
 		{
 			internalDismissNotification();
 		}
@@ -1237,25 +1251,6 @@ void runNotifications()
 			displayNotification(currentNotification.get());
 		}
 	}
-
-	if (!currentInGameNotification || !currentInGameNotification->isActivelyBeingDragged())
-	{
-		if (lastDragOnNotificationStartPos.x >= 0 && lastDragOnNotificationStartPos.y >= 0)
-		{
-			UDWORD currDragStartX, currDragStartY;
-			if (mouseDrag(MOUSE_LMB, &currDragStartX, &currDragStartY))
-			{
-				if (currDragStartX != lastDragOnNotificationStartPos.x || currDragStartY != lastDragOnNotificationStartPos.y)
-				{
-					notificationDidStopDragOnNotification(); // ensure last notification drag position is cleared
-				}
-			}
-			else
-			{
-				notificationDidStopDragOnNotification(); // ensure last notification drag position is cleared
-			}
-		}
-	}
 }
 
 void removeInGameNotificationForm(WZ_Queued_Notification* request)
@@ -1305,7 +1300,7 @@ void addNotification(const WZ_Notification& notification, const WZ_Notification_
 	}
 
 	// Add the notification to the notification system's queue
-	notificationQueue.push_back(std::unique_ptr<WZ_Queued_Notification>(new WZ_Queued_Notification(notification, WZ_Notification_Status(realTime), trigger)));
+	notificationQueue.push_back(std::make_unique<WZ_Queued_Notification>(notification, WZ_Notification_Status(realTime), trigger));
 }
 
 bool removeNotificationPreferencesIf(const std::function<bool (const std::string& uniqueNotificationIdentifier)>& matchIdentifierFunc)

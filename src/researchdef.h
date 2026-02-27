@@ -53,6 +53,7 @@ struct RESEARCH : public BASE_STATS
 	UDWORD			researchPower;		/* Power cost to research */
 	UBYTE			keyTopic;			/* Flag to indicate whether in single player
 										   this topic must be explicitly enabled*/
+	UBYTE			excludeFromCheats;	/* Flag to prevent this topic from appearing and being researched with cheats */
 	UBYTE			disabledWhen;		/* flags when to disable tech */
 	std::vector<UWORD>	pPRList;		///< List of research pre-requisites
 	std::vector<UWORD>	pStructList;		///< List of structures that when built would enable this research
@@ -65,8 +66,11 @@ struct RESEARCH : public BASE_STATS
 	VIEWDATA                *pViewData;             ///< Data used to display a message in the Intelligence Screen
 	UWORD			iconID;				/* the ID from 'Framer' for which graphic to draw in interface*/
 	BASE_STATS      *psStat;   /* A stat used to define which graphic is drawn instead of the two fields below */
-	iIMDShape		*pIMD;		/* the IMD to draw for this research topic */
-	iIMDShape		*pIMD2;		/* the 2nd IMD for base plates/turrets*/
+	iIMDBaseShape		*pIMD;		/* the IMD to draw for this research topic */
+	iIMDBaseShape		*pIMD2;		/* the 2nd IMD for base plates/turrets*/
+	WzString category;			/* Category name as in json (for progression numbering) */
+	uint16_t categoryProgress; /* Category this/max (gets filled on load) */
+	uint16_t categoryMax; /* Category progress/this (gets filled on load) */
 	int index;		///< Unique index for this research, set incrementally
 
 	RESEARCH() : pViewData(nullptr), iconID(0), psStat(nullptr), pIMD(nullptr), pIMD2(nullptr) {}

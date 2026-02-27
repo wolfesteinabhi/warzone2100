@@ -1,36 +1,69 @@
 {
 	"name": "warzone2100",
 	"version-string": "master-branch",
-	"builtin-baseline": "6d16cb553a82eb42548326769f0a16d74fbceec1",
+	"builtin-baseline": "1d483bc44f8c35627407d7024e0045743829c2e8",
 	"dependencies": [
-		"sdl2",
 		"physfs",
-		"harfbuzz",
-		"fribidi",
+		{
+			"name": "sdl3",
+			"default-features": true,
+			"platform": "!emscripten"
+		},
+		{
+			"name": "sdl3",
+			"default-features": true,
+			"features": [
+				"emscripten-pthreads"
+			],
+			"platform": "emscripten"
+		},
+		{
+			"name": "harfbuzz",
+			"platform": "!emscripten"
+		},
+		{
+			"name": "fribidi",
+			"platform": "!emscripten"
+		},
+		{
+			"name": "freetype",
+			"platform": "!emscripten"
+		},
 		"libogg",
 		"libtheora",
 		"libvorbis",
 		"opus",
-		"libpng",
-		"freetype",
-		"gettext",
 		{
-			"name": "openal-soft",
-			"platform": "windows | mingw"
+			"name": "libpng",
+			"platform": "!emscripten"
+		},
+		{
+			"name": "libspng",
+			"platform": "emscripten"
+		},
+		{
+			"name": "gettext-libintl",
+			"platform": "!emscripten"
 		},
 		{
 			"name": "openal-soft",
-			"platform": "!windows & !mingw",
-			"version>=": "1.23.0"
+			"platform": "!emscripten"
 		},
 		"zlib",
 		"sqlite3",
 		"libsodium",
 		{
+			"name": "libzip",
+			"default-features": false,
+			"features": [
+				"bzip2"
+			]
+		},
+		{
+			"$comment": "By not specifying curl[http3] feature, defaults to schannel for Windows, which is desired",
 			"name": "curl",
 			"default-features": false,
 			"features": [
-				"winssl",
 				"ssl"
 			],
 			"platform": "windows | mingw"
@@ -39,7 +72,7 @@
 			"name": "curl",
 			"default-features": false,
 			"features": [
-				"sectransp",
+				"openssl",
 				"ssl"
 			],
 			"platform": "osx"
@@ -50,7 +83,7 @@
 			"features": [
 				"ssl"
 			],
-			"platform": "!windows & !mingw & !osx"
+			"platform": "!windows & !mingw & !osx & !emscripten"
 		},
 		{
 			"name": "angle",
@@ -59,10 +92,14 @@
 		{
 			"name": "basisu",
 			"host": true
+		},
+		{
+			"name": "protobuf",
+			"platform": "!emscripten"
 		}
 	],
 	"overrides": [
-		{ "name": "sqlite3", "version": "3.40.1" }
+		{ "name": "sqlite3", "version": "3.49.2" }
 	],
 	"default-features": [
 		"vulkan"
@@ -72,11 +109,12 @@
 			"description": "The Vulkan backend",
 			"dependencies": [
 				{
-					"name": "sdl2",
+					"name": "sdl3",
 					"default-features": true,
 					"features": [
 						"vulkan"
-					]
+					],
+					"platform": "!emscripten"
 				}
 			]
 		}

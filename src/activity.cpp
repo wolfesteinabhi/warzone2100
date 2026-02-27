@@ -23,6 +23,7 @@
 #include "activity.h"
 #include "multiint.h"
 #include "mission.h"
+#include "campaigninfo.h"
 #include "challenge.h"
 #include "modding.h"
 #include "gamehistorylogger.h"
@@ -86,6 +87,32 @@ std::string ActivitySink::getTeamDescription(const ActivitySink::SkirmishGameInf
 		teamDescription += std::to_string(team.second);
 	}
 	return teamDescription;
+}
+
+std::string to_string(const ActivitySink::GameMode& mode)
+{
+	switch (mode)
+	{
+		case ActivitySink::GameMode::MENUS:
+			return "Menus";
+		case ActivitySink::GameMode::TUTORIAL:
+			return "Tutorial";
+		case ActivitySink::GameMode::CAMPAIGN:
+			return "Campaign";
+		case ActivitySink::GameMode::CHALLENGE:
+			return "Challenge";
+		case ActivitySink::GameMode::SKIRMISH:
+			return "Skirmish";
+		case ActivitySink::GameMode::HOSTING_IN_LOBBY:
+			return "Hosting::InLobby";
+		case ActivitySink::GameMode::JOINING_IN_PROGRESS:
+			return "Joining::InProgress";
+		case ActivitySink::GameMode::JOINING_IN_LOBBY:
+			return "Joining::InLobby";
+		case ActivitySink::GameMode::MULTIPLAYER:
+			return "Multiplayer";
+	}
+	return ""; // silence warning
 }
 
 std::string to_string(const ActivitySink::GameEndReason& reason)
@@ -220,12 +247,17 @@ public:
 	// Caller is expected to handle thrown exceptions
 	ActivityDatabase(const std::string& activityDatabasePath)
 	{
-		db = std::unique_ptr<SQLite::Database>(new SQLite::Database(activityDatabasePath, SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE));
+		db = std::make_unique<SQLite::Database>(activityDatabasePath, SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE);
 		db->exec("PRAGMA journal_mode=WAL");
 		createTables();
-		query_findValueByName = std::unique_ptr<SQLite::Statement>(new SQLite::Statement(*db, "SELECT value FROM general_kv_storage WHERE name = ?"));
-		query_insertValueForName = std::unique_ptr<SQLite::Statement>(new SQLite::Statement(*db, "INSERT OR IGNORE INTO general_kv_storage(name, value) VALUES(?, ?)"));
-		query_updateValueForName = std::unique_ptr<SQLite::Statement>(new SQLite::Statement(*db, "UPDATE general_kv_storage SET value = ? WHERE name = ?"));
+
+		query_findValueByName = std::make_unique<SQLite::Statement>(*db, "SELECT value FROM general_kv_storage WHERE name = ?");
+		query_insertValueForName = std::make_unique<SQLite::Statement>(*db, "INSERT OR IGNORE INTO general_kv_storage(name, value) VALUES(?, ?)");
+		query_updateValueForName = std::make_unique<SQLite::Statement>(*db, "UPDATE general_kv_storage SET value = ? WHERE name = ?");
+
+		guideTopicQuery_findPrefsByTopicId = std::make_unique<SQLite::Statement>(*db, "SELECT lastread, bookmarked FROM guidetopics WHERE topicid = ?");
+		guideTopicQuery_insertTopicId = std::make_unique<SQLite::Statement>(*db, "INSERT OR IGNORE INTO guidetopics(topicid) VALUES(?)");
+		guideTopicQuery_updatePrefsForTopicId = std::make_unique<SQLite::Statement>(*db, "UPDATE guidetopics SET lastread = ?, bookmarked = ? WHERE topicid = ?");
 	}
 public:
 	// Must be thread-safe
@@ -234,6 +266,83 @@ public:
 		auto result = getValue(FIRST_LAUNCH_DATE_KEY);
 		ASSERT_OR_RETURN("", result.has_value(), "Should always be initialized");
 		return result.value();
+	}
+
+	virtual optional<GuideTopicPrefs> getGuideTopicPrefs(const std::string& topicIdentifier) const override
+	{
+		std::lock_guard<std::mutex> guard(db_mutex);
+		optional<GuideTopicPrefs> result;
+		try {
+			guideTopicQuery_findPrefsByTopicId->bind(1, topicIdentifier);
+			if (guideTopicQuery_findPrefsByTopicId->executeStep())
+			{
+				auto lastReadVerCol = guideTopicQuery_findPrefsByTopicId->getColumn(0);
+				optional<std::string> lastReadVer = nullopt;
+				if (!lastReadVerCol.isNull())
+				{
+					lastReadVer = lastReadVerCol.getString();
+				}
+				result = GuideTopicPrefs{lastReadVer, guideTopicQuery_findPrefsByTopicId->getColumn(1).getInt() != 0};
+			}
+		}
+		catch (const std::exception& e) {
+			debug(LOG_ERROR, "Failure to query database for key; error: %s", e.what());
+			result = nullopt;
+		}
+		try {
+			guideTopicQuery_findPrefsByTopicId->reset();
+		}
+		catch (const std::exception& e) {
+			debug(LOG_ERROR, "Failed to reset prepared statement; error: %s", e.what());
+		}
+		return result;
+	}
+
+	virtual bool setGuideTopicPrefs(const std::string& topicIdentifier, const GuideTopicPrefs& prefs) override
+	{
+		std::lock_guard<std::mutex> guard(db_mutex);
+
+		try {
+			// Begin transaction
+			SQLite::Transaction transaction(*db);
+
+			guideTopicQuery_insertTopicId->bind(1, topicIdentifier);
+			guideTopicQuery_insertTopicId->exec();
+
+			if (prefs.lastReadVersion.has_value())
+			{
+				guideTopicQuery_updatePrefsForTopicId->bind(1, prefs.lastReadVersion.value());
+			}
+			else
+			{
+				guideTopicQuery_updatePrefsForTopicId->bind(1); // bind NULL value
+			}
+			guideTopicQuery_updatePrefsForTopicId->bind(2, prefs.bookmarked);
+			guideTopicQuery_updatePrefsForTopicId->bind(3, topicIdentifier);
+			if (guideTopicQuery_updatePrefsForTopicId->exec() == 0)
+			{
+				debug(LOG_WARNING, "Failed to update value for key (%s)", topicIdentifier.c_str());
+			}
+			guideTopicQuery_updatePrefsForTopicId->reset();
+			guideTopicQuery_insertTopicId->reset();
+
+			// Commit transaction
+			transaction.commit();
+			return true;
+		}
+		catch (const std::exception& e) {
+			debug(LOG_ERROR, "Update / insert failed; error: %s", e.what());
+			// continue on to try to reset prepared statements
+		}
+
+		try {
+			guideTopicQuery_updatePrefsForTopicId->reset();
+			guideTopicQuery_insertTopicId->reset();
+		}
+		catch (const std::exception& e) {
+			debug(LOG_ERROR, "Failed to reset prepared statement; error: %s", e.what());
+		}
+		return false;
 	}
 
 private:
@@ -325,6 +434,10 @@ private:
 		}
 		// initialize first launch date if it doesn't exist
 		db->exec("INSERT OR IGNORE INTO general_kv_storage(name, value) VALUES(\"" FIRST_LAUNCH_DATE_KEY "\", date('now'))");
+		if (!db->tableExists("guidetopics"))
+		{
+			db->exec("CREATE TABLE guidetopics (topicid TEXT UNIQUE NOT NULL, lastread TEXT, bookmarked INTEGER)");
+		}
 		transaction.commit();
 	}
 
@@ -334,6 +447,11 @@ private:
 	std::unique_ptr<SQLite::Statement> query_findValueByName;
 	std::unique_ptr<SQLite::Statement> query_insertValueForName;
 	std::unique_ptr<SQLite::Statement> query_updateValueForName;
+
+	// guidetopics queries
+	std::unique_ptr<SQLite::Statement> guideTopicQuery_findPrefsByTopicId;
+	std::unique_ptr<SQLite::Statement> guideTopicQuery_insertTopicId;
+	std::unique_ptr<SQLite::Statement> guideTopicQuery_updatePrefsForTopicId;
 };
 
 ActivityManager::ActivityManager()
@@ -385,6 +503,7 @@ void ActivityManager::shutdown()
 
 void ActivityManager::addActivitySink(std::shared_ptr<ActivitySink> sink)
 {
+	ASSERT_OR_RETURN(, sink != nullptr, "sink is null?");
 	activitySinks.push_back(sink);
 }
 
@@ -619,7 +738,7 @@ void ActivityManager::hostGameLobbyServerDisconnect()
 	for (auto sink : activitySinks) { sink->hostingMultiplayerGame(currentMultiplayGameInfo); }
 }
 
-void ActivityManager::hostLobbyQuit()
+void ActivityManager::hostLobbyQuit(LOBBY_ERROR_TYPES errorResult)
 {
 	if (currentMode != ActivitySink::GameMode::HOSTING_IN_LOBBY)
 	{
@@ -629,7 +748,7 @@ void ActivityManager::hostLobbyQuit()
 	currentMode = ActivitySink::GameMode::MENUS;
 
 	// Notify the ActivitySink that we've left the game lobby
-	for (auto sink : activitySinks) { sink->leftMultiplayerGameLobby(true, getLobbyError()); }
+	for (auto sink : activitySinks) { sink->leftMultiplayerGameLobby(true, errorResult); }
 }
 
 // called when attempting to join a lobby game
@@ -676,20 +795,20 @@ void ActivityManager::joinGameSucceeded(const char *host, uint32_t port)
 	// Therefore, delay ActivitySink::joinedMultiplayerGame until after we receive the initial game data
 }
 
-void ActivityManager::joinedLobbyQuit()
+void ActivityManager::joinedLobbyQuit(LOBBY_ERROR_TYPES errorResult)
 {
-	if (currentMode != ActivitySink::GameMode::JOINING_IN_LOBBY)
+	if (currentMode != ActivitySink::GameMode::JOINING_IN_PROGRESS && currentMode != ActivitySink::GameMode::JOINING_IN_LOBBY)
 	{
 		if (currentMode != ActivitySink::GameMode::MENUS)
 		{
-			debug(LOG_ACTIVITY, "Unexpected call to joinedLobbyQuit - currentMode (%u) - ignoring", (unsigned int)currentMode);
+			debug(LOG_ERROR, "Unexpected call to joinedLobbyQuit - currentMode (%u) - ignoring", (unsigned int)currentMode);
 		}
 		return;
 	}
 	currentMode = ActivitySink::GameMode::MENUS;
 
 	// Notify the ActivitySink that we've left the game lobby
-	for (auto sink : activitySinks) { sink->leftMultiplayerGameLobby(false, getLobbyError()); }
+	for (auto sink : activitySinks) { sink->leftMultiplayerGameLobby(false, errorResult); }
 }
 
 // for skirmish / multiplayer, provide additional data / state

@@ -43,8 +43,9 @@ struct FACTION {
 
 void reinitFactionsMapping();
 
+optional<WzString> getFactionModelName(const FACTION *faction, const WzString& normalFactionName);
 optional<WzString> getFactionModelName(const FactionID faction, const WzString& normalFactionName);
-iIMDShape* getFactionIMD(const FACTION *faction, iIMDShape* imd);
+const iIMDShape* getFactionDisplayIMD(const FACTION *faction, const iIMDShape* imd); // DISPLAY ONLY
 
 const FACTION* getPlayerFaction(uint8_t player);
 const FACTION* getFactionByID(FactionID faction);
@@ -53,8 +54,5 @@ std::unordered_set<FactionID> getEnabledFactions(bool ignoreNormalFaction = fals
 
 const char* to_string(FactionID faction);
 const char* to_localized_string(FactionID faction);
-
-void addFactionModelNameMapping(FACTION *faction, const WzString& normalFactionName, const WzString& mappedName);
-void addFactionModelNameMapping(FactionID faction, const WzString& normalFactionName, const WzString& mappedName);
 
 #endif

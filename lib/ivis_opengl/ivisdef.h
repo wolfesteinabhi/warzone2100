@@ -37,6 +37,8 @@
 #include <vector>
 #include <string>
 #include <unordered_map>
+#include <memory>
+#include <array>
 
 
 //*************************************************************************
@@ -75,13 +77,13 @@ struct EDGE
 struct ANIMFRAME
 {
 	Vector3f scale = Vector3f(0.f, 0.f, 0.f);
-	Position pos = Position(0, 0, 0);
+	Vector3f pos = Vector3f(0.f, 0.f, 0.f);
 	Rotation rot;
 };
 
 struct iIMDPoly
 {
-	std::vector<Vector2f> texCoord;
+	std::array<Vector2f, 3> texCoord;
 	Vector2f texAnim = Vector2f(0.f, 0.f);
 	uint32_t flags = 0;
 	int32_t zcentre = 0;
@@ -109,32 +111,99 @@ enum ANIMATION_EVENTS
 	ANIM_EVENT_COUNT
 };
 
-struct iIMDShape
-{
-	~iIMDShape();
+#define WZ_CURRENT_GRAPHICS_OVERRIDES_PREFIX "graphics_overrides/curr"
 
-	Vector3i min = Vector3i(0, 0, 0);
+// A game model will have (potentially) two sets of information:
+// 1. Information used for game state calculations (this is always from the "base" / core model file)
+//		- This is accessible in the `iIMDBaseShape`
+// 2. Information used for display (this may be from the "base" / core model, or a graphics mod overlay display-only model replacement)
+//		- This is accessible in the `iIMDShape` that can be obtained via `iIMDBaseShape::displayModel()`
+
+struct iIMDShape;
+
+struct iIMDBaseShape
+{
+	iIMDBaseShape(std::unique_ptr<iIMDShape> baseModel, const WzString &path, const WzString &filename);
+
+	~iIMDBaseShape();
+
+	// SAFE FOR USE IN GAME STATE CALCULATIONS
+
+	Vector3i min = Vector3i(0, 0, 0); // used by: establishTargetHeight (game state calculation), alignStructure (game state calculation), etc
 	Vector3i max = Vector3i(0, 0, 0);
-	unsigned int flags = 0;
-	size_t texpage = iV_TEX_INVALID;
-	size_t tcmaskpage = iV_TEX_INVALID;
-	size_t normalpage = iV_TEX_INVALID;
-	size_t specularpage = iV_TEX_INVALID;
 	int sradius = 0;
 	int radius = 0;
 
 	Vector3f ocen = Vector3f(0.f, 0.f, 0.f);
+
+	std::vector<Vector3i> connectors; // used by: muzzle base location, fire line, actionVisibleTarget, etc)
+
+	const WzString path;
+	const WzString filename;
+
+	// the display shape used for rendering (*NOT* for any game state calculations!)
+	inline const iIMDShape* displayModel() const { return m_displayModel.get(); }
+protected:
+	friend bool tryLoad(const WzString &path, const WzString &filename);
+	friend void modelUpdateTilesetIdx(size_t tilesetIdx);
+	friend void modelReloadAllModelTextures();
+	friend bool debugReloadDisplayModelsForBaseModel(iIMDBaseShape& baseModel);
+	friend void debugReloadAllDisplayModels();
+
+	void replaceDisplayModel(std::unique_ptr<iIMDShape> newDisplayModel);
+	bool debugReloadDisplayModel(); // not to be called normally at runtime - intended for the script / graphics debugger panel
+	inline iIMDShape* mutableDisplayModel() { return m_displayModel.get(); }
+private:
+	bool debugReloadDisplayModelInternal(bool recurseAnimPie);
+private:
+	std::unique_ptr<iIMDShape> m_displayModel = nullptr;  // the display shape used for rendering (*NOT* for any game state calculations!)
+};
+
+struct iIMDShapeTextures
+{
+	bool initialized = false;
+	size_t texpage = iV_TEX_INVALID;
+	size_t tcmaskpage = iV_TEX_INVALID;
+	size_t normalpage = iV_TEX_INVALID;
+	size_t specularpage = iV_TEX_INVALID;
+};
+
+struct TilesetTextureFiles
+{
+	std::string texfile;
+	std::string tcmaskfile;
+	std::string normalfile;
+	std::string specfile;
+};
+
+// DISPLAY-ONLY
+// NOTE: Do *NOT* use any data from iIMDShape in game state calculations - instead, use the data in an iIMDBaseShape
+struct iIMDShape
+{
+	iIMDShape& operator=(iIMDShape&& other) noexcept;
+	~iIMDShape();
+
+	Vector3i min = Vector3i(0, 0, 0);
+	Vector3i max = Vector3i(0, 0, 0);
+	int sradius = 0;
+	int radius = 0;
+
+	Vector3f ocen = Vector3f(0.f, 0.f, 0.f);
+
+	std::vector<Vector3i> connectors;
+
+	unsigned int flags = 0;
+
+	const iIMDShapeTextures& getTextures() const;
+
 	unsigned short numFrames = 0;
 	unsigned short animInterval = 0;
-
-	unsigned int nconnectors = 0;
-	Vector3i *connectors = 0;
 
 	EDGE *shadowEdgeList = nullptr;
 	size_t nShadowEdges = 0;
 
 	// The old rendering data
-	std::vector<Vector3f> points;
+	std::vector<Vector3f> points; // NOTE: This is used to calculate some of the values above on imd load (in _imd_calc_bounds)
 	std::vector<iIMDPoly> polys;
 
 	// Data used for stencil shadows
@@ -144,8 +213,7 @@ struct iIMDShape
 	std::vector<iIMDPoly> *pShadowPolys = nullptr;
 
 	// The new rendering data
-	gfx_api::buffer* buffers[VBO_COUNT] = { nullptr };
-	SHADER_MODE shaderProgram = SHADER_NONE; // if using specialized shader for this model
+	std::array<gfx_api::buffer*, VBO_COUNT> buffers = { };
 	uint16_t vertexCount = 0;
 
 	// object animation (animating a level, rather than its texture)
@@ -155,15 +223,35 @@ struct iIMDShape
 	// more object animation, but these are only set for the first level
 	int objanimtime = 0; ///< total time to render all animation frames
 	int objanimcycles = 0; ///< Number of cycles to render, zero means infinitely many
-	iIMDShape *objanimpie[ANIM_EVENT_COUNT] = { nullptr };
+	std::array<iIMDBaseShape*, ANIM_EVENT_COUNT> objanimpie = { }; // non-owned pointer to loaded base shape
 
 	int interpolate = 1; // if the model wants to be interpolated
 
 	WzString modelName;
 	uint32_t modelLevel = 0;
 
-	iIMDShape *next = nullptr;  // next pie in multilevel pies (NULL for non multilevel !)
+	std::array<TilesetTextureFiles, 3> tilesetTextureFiles;
+
+	std::unique_ptr<iIMDShape> next = nullptr;  // next pie in multilevel pies (NULL for non multilevel !)
+
+public:
+	PIELIGHT getTeamColourForModel(int team) const;
+
+protected:
+	friend void modelUpdateTilesetIdx(size_t tilesetIdx);
+	void reloadTexturesIfLoaded();
+
+private:
+	void freeInternalResources();
+
+private:
+	std::unique_ptr<iIMDShapeTextures> m_textures = std::make_unique<iIMDShapeTextures>();
 };
+
+inline const iIMDShape *safeGetDisplayModelFromBase(iIMDBaseShape* pBaseIMD)
+{
+	return ((pBaseIMD) ? pBaseIMD->displayModel() : nullptr);
+}
 
 
 //*************************************************************************
@@ -198,6 +286,8 @@ struct IMAGEFILE
 
 	~IMAGEFILE(); // Defined in bitimage.cpp.
 	AtlasImageDef* find(WzString const &name);  // Defined in bitimage.cpp.
+
+	inline size_t numImages() const { return imageDefs.size(); }
 
 	std::vector<Page> pages;          /// Texture pages.
 	std::vector<AtlasImageDef> imageDefs;  /// Stored images.

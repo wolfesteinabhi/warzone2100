@@ -59,6 +59,24 @@ static auto psMouseOverWidget = std::weak_ptr<WIDGET>();
 static auto psClickDownWidgetScreen = std::shared_ptr<W_SCREEN>();
 static auto psMouseOverWidgetScreen = std::shared_ptr<W_SCREEN>();
 
+struct WIDGET_KEYSTATE
+{
+public:
+	bool pressed = false;
+	W_CONTEXT dragStartPos = W_CONTEXT::ZeroContext();
+	W_CONTEXT dragLastPos = W_CONTEXT::ZeroContext();
+	std::shared_ptr<WIDGET> capturedDragWidget;
+public:
+	void reset()
+	{
+		pressed = false;
+		dragStartPos = W_CONTEXT::ZeroContext();
+		dragLastPos = W_CONTEXT::ZeroContext();
+		capturedDragWidget.reset();
+	}
+};
+static std::array<WIDGET_KEYSTATE, WKEY_SECONDARY + 1> widgetKeyCurrentState;
+
 static WIDGET_AUDIOCALLBACK AudioCallback = nullptr;
 static SWORD HilightAudioID = -1;
 static SWORD ClickedAudioID = -1;
@@ -154,6 +172,10 @@ void widgShutDown(void)
 {
 	psClickDownWidgetScreen = nullptr;
 	psMouseOverWidgetScreen = nullptr;
+	for (auto& state : widgetKeyCurrentState)
+	{
+		state.reset();
+	}
 	tipShutdown();
 	overlays.clear();
 	overlaySet.clear();
@@ -230,10 +252,24 @@ void widgRegisterOverlayScreenOnTopOfScreen(const std::shared_ptr<W_SCREEN> &psS
 	else
 	{
 		// priorScreen does not exist in the overlays list, so it is probably the "regular" screen
-		// just insert this overlay at the bottom of the overlay list
+		// so use z-order 0
 		OverlayScreen newOverlay {psScreen, 0};
-		overlays.insert(overlays.end(), newOverlay);
-		overlaySet.insert(psScreen);
+		it = std::find_if(overlays.begin(), overlays.end(), [](const OverlayScreen& overlay) -> bool {
+			return overlay.zOrder == 0;
+		});
+		if (it != overlays.end())
+		{
+			// found existing screen with z-order 0
+			// insert *before* it in the list (i.e. "above" it, since overlays are stored in decreasing z-order)
+			overlays.insert(it, newOverlay);
+			overlaySet.insert(psScreen);
+		}
+		else
+		{
+			// just insert this overlay at the bottom of the overlay list
+			overlays.insert(overlays.end(), newOverlay);
+			overlaySet.insert(psScreen);
+		}
 	}
 }
 
@@ -246,6 +282,13 @@ void widgRemoveOverlayScreen(const std::shared_ptr<W_SCREEN> &psScreen)
 	{
 		overlaysToDelete.insert(psScreen);
 	}
+}
+
+bool isRegisteredOverlayScreen(const std::shared_ptr<W_SCREEN> &psScreen)
+{
+	return std::any_of(overlays.begin(), overlays.end(), [psScreen](const OverlayScreen& overlay) -> bool {
+		return overlay.psScreen == psScreen;
+	});
 }
 
 static void cleanupDeletedOverlays()
@@ -343,7 +386,7 @@ static inline void forEachOverlayScreenBottomUp(const std::function<bool (const 
 
 void widgOverlaysScreenSizeDidChange(int oldWidth, int oldHeight, int newWidth, int newHeight)
 {
-	forEachOverlayScreen([oldWidth, oldHeight, newWidth, newHeight](const OverlayScreen& overlay) -> bool
+	forEachOverlayScreenBottomUp([oldWidth, oldHeight, newWidth, newHeight](const OverlayScreen& overlay) -> bool
 	{
 		overlay.psScreen->screenSizeDidChange(oldWidth, oldHeight, newWidth, newHeight);
 		return true; // keep enumerating
@@ -354,6 +397,11 @@ static bool isScreenARegisteredOverlay(const std::shared_ptr<W_SCREEN> &psScreen
 {
 	if (!psScreen) { return false; }
 	return overlaySet.count(psScreen) > 0;
+}
+
+bool isMouseOverScreen(const std::shared_ptr<W_SCREEN>& psScreen)
+{
+	return psMouseOverWidgetScreen == psScreen;
 }
 
 bool isMouseOverScreenOverlayChild(int mx, int my)
@@ -491,6 +539,16 @@ void WIDGET::setGeometry(WzRect const &r)
 	dirty = true;
 }
 
+void WIDGET::setGeometryFromScreenRect(WzRect const &r)
+{
+	auto strongParent = parent();
+	ASSERT_OR_RETURN(, strongParent != nullptr, "No parent - failed");
+	int xOffset = strongParent->screenPosX();
+	int yOffset = strongParent->screenPosY();
+	WzRect parentRelativeRect = WzRect(r.x() - xOffset, r.y() - yOffset, r.width(), r.height());
+	setGeometry(parentRelativeRect);
+}
+
 void WIDGET::screenSizeDidChange(int oldWidth, int oldHeight, int newWidth, int newHeight)
 {
 	// Default implementation of screenSizeDidChange calls its own calcLayout callback function (if present)
@@ -537,12 +595,22 @@ void WIDGET::setCustomHitTest(const WIDGET_HITTEST_FUNC& newCustomHitTestFunc)
 	customHitTest = newCustomHitTestFunc;
 }
 
-void WIDGET::attach(const std::shared_ptr<WIDGET> &widget)
+void WIDGET::attach(const std::shared_ptr<WIDGET> &widget, ChildZPos zPos /*= ChildZPos::Front*/)
 {
 	ASSERT_OR_RETURN(, widget != nullptr && widget->parentWidget.expired(), "Bad attach.");
 	widget->parentWidget = shared_from_this();
 	widget->setScreenPointer(screenPointer.lock());
-	childWidgets.push_back(widget);
+	switch (zPos)
+	{
+	case ChildZPos::Front:
+		// insert at the end of the list of children, and thus the top of the z-order (childWidgets order is bottom -> top)
+		childWidgets.push_back(widget);
+		break;
+	case ChildZPos::Back:
+		// insert at the very beginning of the list of children
+		childWidgets.insert(childWidgets.begin(), widget);
+		break;
+	}
 }
 
 void WIDGET::detach(const std::shared_ptr<WIDGET> &widget)
@@ -578,10 +646,12 @@ void WIDGET::setScreenPointer(const std::shared_ptr<W_SCREEN> &screen)
 		if (lockedScreen->hasFocus(*this))
 		{
 			lockedScreen->psFocus.reset();
+			this->focusLost();
 		}
 		if (lockedScreen->isLastHighlight(*this))
 		{
 			lockedScreen->lastHighlight.reset();
+			this->highlightLost();
 		}
 	}
 
@@ -623,7 +693,7 @@ void W_SCREEN::initialize(const std::shared_ptr<W_FORM>& customRootForm)
 			customRootFormParent->detach(customRootForm);
 		}
 		psForm = customRootForm;
-		psForm->screenPointer = shared_from_this();
+		psForm->setScreenPointer(shared_from_this());
 		return;
 	}
 
@@ -924,6 +994,11 @@ void WIDGET::setTip(std::string)
 	ASSERT(false, "Can't set widget type %u's tip.", type);
 }
 
+void WIDGET::setHelp(optional<WidgetHelp> help)
+{
+	ASSERT(false, "Can't set widget type %u's help.", type);
+}
+
 /* Set tip string for a widget */
 void widgSetTip(const std::shared_ptr<W_SCREEN> &psScreen, UDWORD id, std::string pTip)
 {
@@ -949,7 +1024,7 @@ UDWORD widgGetButtonKey_DEPRECATED(const std::shared_ptr<W_SCREEN> &psScreen)
 	return lastReleasedKey_DEPRECATED;
 }
 
-unsigned WIDGET::getState()
+unsigned WIDGET::getState() const
 {
 	ASSERT(false, "Can't get widget type %u's state.", type);
 	return 0;
@@ -1111,7 +1186,12 @@ void WIDGET::runRecursive(W_CONTEXT *psContext)
 	}
 }
 
-bool WIDGET::hitTest(int x, int y)
+void WIDGET::manuallyCallRun(W_CONTEXT *psContext)
+{
+	run(psContext);
+}
+
+bool WIDGET::hitTest(int x, int y) const
 {
 	// default hit-testing bounding rect (based on the widget's x, y, width, height)
 	bool hitTestResult = dim.contains(x, y);
@@ -1125,9 +1205,9 @@ bool WIDGET::hitTest(int x, int y)
 	return hitTestResult;
 }
 
-bool WIDGET::processClickRecursive(W_CONTEXT *psContext, WIDGET_KEY key, bool wasPressed)
+std::shared_ptr<WIDGET> WIDGET::findMouseTargetRecursive(W_CONTEXT *psContext, WIDGET_KEY key, bool wasPressed)
 {
-	bool didProcessClick = false;
+	std::shared_ptr<WIDGET> widgProcessedClick = nullptr;
 
 	W_CONTEXT shiftedContext(psContext);
 	shiftedContext.mx = psContext->mx - x();
@@ -1144,43 +1224,70 @@ bool WIDGET::processClickRecursive(W_CONTEXT *psContext, WIDGET_KEY key, bool wa
 	if (!skipProcessingChildren)
 	{
 		// Process subwidgets.
-		for (auto const &psCurr: childWidgets)
+		// (Enumerate the child widgets in decreasing z-order (i.e. "top-down"))
+		for (auto i = childWidgets.size(); i--;)
 		{
+			auto const &psCurr = childWidgets[i];
 			if (!psCurr->visible() || !psCurr->hitTest(shiftedContext.mx, shiftedContext.my))
 			{
 				continue;  // Skip any hidden widgets, or widgets the click missed.
 			}
 
 			// Process it (recursively).
-			didProcessClick = psCurr->processClickRecursive(&shiftedContext, key, wasPressed) || didProcessClick;
+			widgProcessedClick = psCurr->findMouseTargetRecursive(&shiftedContext, key, wasPressed);
+			if (widgProcessedClick)
+			{
+				*psContext = shiftedContext; // bubble-up the context for the hit
+				return widgProcessedClick;
+			}
 		}
 	}
 
 	if (!visible())
 	{
+		return nullptr;
+	}
+
+	if (isTransparentToMouse)
+	{
+		return nullptr;
+	}
+
+	return shared_from_this();
+}
+
+static void widgProcessMouseOver(const std::shared_ptr<WIDGET>& widget, W_CONTEXT *psContext)
+{
+	if (!widget->visible())
+	{
 		// special case for root form
-		// since the processClickRecursive of children is only called if they are visible
+		// since the findMouseTargetRecursive of children is only called if they are visible
 		// this should only trigger for the root form of a screen that's been set to invisible
-		return didProcessClick;
+		return;
 	}
 
-	if (!isTransparentToMouse && psMouseOverWidget.expired())
+	if (widget->transparentToMouse())
 	{
-		psMouseOverWidget = shared_from_this();  // Mark that the mouse is over a widget (if we haven't already).
+		return;
 	}
 
-	if (isMouseOverWidget())
+	if (psMouseOverWidget.expired())
 	{
-		if (auto lockedScreen = screenPointer.lock())
+		psMouseOverWidget = widget;  // Mark that the mouse is over a widget (if we haven't already).
+	}
+
+	if (widget->isMouseOverWidget())
+	{
+		if (auto lockedScreen = widget->screenPointer.lock())
 		{
-			if (!lockedScreen->isLastHighlight(*this))
+			if (!lockedScreen->isLastHighlight(*widget))
 			{
-				if (auto lockedLastHighligh = lockedScreen->lastHighlight.lock())
+				if (auto lockedLastHighlight = lockedScreen->lastHighlight.lock())
 				{
-					lockedLastHighligh->highlightLost();
+					lockedLastHighlight->highlightLost();
 				}
-				lockedScreen->lastHighlight = shared_from_this();  // Mark that the mouse is over a widget (if we haven't already).
-				highlight(psContext);
+				lockedScreen->lastHighlight = widget;  // Mark that the mouse is over a widget (if we haven't already).
+				widget->highlight(psContext);
 			}
 			if (psMouseOverWidgetScreen != lockedScreen)
 			{
@@ -1202,48 +1309,108 @@ bool WIDGET::processClickRecursive(W_CONTEXT *psContext, WIDGET_KEY key, bool wa
 			// Note: There are rare exceptions where this can happen, if a WIDGET is doing something funky like drawing widgets it hasn't attached.
 			psMouseOverWidgetScreen = nullptr;
 		}
-
-		if (key == WKEY_NONE)
-		{
-			// We're just checking mouse position, and this isn't a click, but return that we handled it
-			return true;
-		}
 	}
+}
 
-	if (key == WKEY_NONE)
-	{
-		return didProcessClick;  // Just checking mouse position, not a click.
-	}
+static void widgProcessMouseClick(const std::shared_ptr<WIDGET>& widget, W_CONTEXT *psContext, WIDGET_KEY key, bool wasPressed)
+{
+	widgProcessMouseOver(widget, psContext);
 
-	if (isMouseOverWidget())
+	if (widget->isMouseOverWidget())
 	{
-		auto psClickedWidget = shared_from_this();
-		if (isTransparentToClicks)
+		auto psClickedWidget = widget->processClick(psContext, key, wasPressed);
+		if (!psClickedWidget)
 		{
-			do {
-				psClickedWidget = psClickedWidget->parent();
-			} while (psClickedWidget != nullptr && psClickedWidget->isTransparentToClicks);
-			if (psClickedWidget == nullptr)
-			{
-				return false;
-			}
+			return;
 		}
 		if (wasPressed)
 		{
-			psClickedWidget->clicked(psContext, key);
 			psClickDownWidgetScreen = psClickedWidget->screenPointer.lock();
+			if (psClickedWidget->capturesMouseDrag(key))
+			{
+				widgetKeyCurrentState[key].capturedDragWidget = psClickedWidget;
+				widgetKeyCurrentState[key].dragLastPos = widgetKeyCurrentState[key].dragStartPos = psContext->convertToScreenContext();
+			}
 		}
 		else
 		{
-			psClickedWidget->released(psContext, key);
 			psClickDownWidgetScreen.reset();
 		}
-		didProcessClick = true;
 	}
-
-	return didProcessClick;
 }
 
+std::shared_ptr<WIDGET> WIDGET::processClick(W_CONTEXT *psContext, WIDGET_KEY key, bool wasPressed)
+{
+	auto psClickedWidget = shared_from_this();
+	W_CONTEXT clickedContext(psContext);
+	if (isTransparentToClicks)
+	{
+		do {
+			psClickedWidget = psClickedWidget->parent();
+			int shiftX = psClickedWidget->x();
+			int shiftY = psClickedWidget->y();
+			clickedContext.mx += shiftX;
+			clickedContext.my += shiftY;
+			clickedContext.xOffset -= shiftX;
+			clickedContext.yOffset -= shiftY;
+		} while (psClickedWidget != nullptr && psClickedWidget->isTransparentToClicks);
+		if (psClickedWidget == nullptr)
+		{
+			return nullptr;
+		}
+	}
+	if (wasPressed)
+	{
+		psClickedWidget->clicked(&clickedContext, key);
+	}
+	else
+	{
+		psClickedWidget->released(&clickedContext, key);
+	}
+	*psContext = clickedContext;
+
+	return psClickedWidget;
+}
+
+void WIDGET::processMouseDragEvent(const W_CONTEXT &sContext, WIDGET_KEY wkey, WIDGET_KEYSTATE* pState, bool alsoTriggerReleased)
+{
+	bool dragPosChanged = !(pState->dragLastPos == sContext);
+	if (!dragPosChanged && !alsoTriggerReleased)
+	{
+		// no change since last event
+		return;
+	}
+
+	W_CONTEXT shiftedStartPos(pState->dragStartPos);
+	W_CONTEXT shiftedContext(sContext);
+	auto capturedWidgetParent = pState->capturedDragWidget->parent();
+	if (capturedWidgetParent)
+	{
+		auto parentScreenX = capturedWidgetParent->screenPosX();
+		auto parentScreenY = capturedWidgetParent->screenPosY();
+		shiftedStartPos.xOffset = parentScreenX;
+		shiftedStartPos.yOffset = parentScreenY;
+		shiftedStartPos.mx -= parentScreenX;
+		shiftedStartPos.my -= parentScreenY;
+		shiftedContext.xOffset = parentScreenX;
+		shiftedContext.yOffset = parentScreenY;
+		shiftedContext.mx -= parentScreenX;
+		shiftedContext.my -= parentScreenY;
+	}
+	if (dragPosChanged)
+	{
+		// Trigger a mouseDragged event for the widget
+		pState->capturedDragWidget->mouseDragged(wkey, &shiftedStartPos, &shiftedContext);
+		pState->dragLastPos = sContext;
+	}
+
+	if (alsoTriggerReleased)
+	{
+		// Trigger a released() call on the widget that captured the drag (to ensure it always gets one, even if the mouse was released off-widget)
+		pState->capturedDragWidget->released(&shiftedContext, wkey);
+		pState->capturedDragWidget.reset();
+	}
+}
 
 /* Execute a set of widgets for one cycle.
  * Returns a list of activated widgets.
@@ -1284,39 +1451,90 @@ WidgetTriggers const &widgRunScreen(const std::shared_ptr<W_SCREEN> &psScreen)
 			case MousePress::Release: pressed = false; break;
 			default: continue;
 			}
+
+			sContext = W_CONTEXT::ZeroContext();
 			sContext.mx = c->pos.x;
 			sContext.my = c->pos.y;
-			bool didProcessClick = false;
-			forEachOverlayScreen([&sContext, &didProcessClick, wkey, pressed](const OverlayScreen& overlay) -> bool
+			std::shared_ptr<WIDGET> mouseOverWidget = nullptr;
+
+			if (!pressed || (pressed && widgetKeyCurrentState[wkey].capturedDragWidget != nullptr))
 			{
-				didProcessClick = overlay.psScreen->psForm->processClickRecursive(&sContext, wkey, pressed);
-				return !didProcessClick;
-			});
-			if (!didProcessClick)
+				if (widgetKeyCurrentState[wkey].capturedDragWidget)
+				{
+					// Deliver a last mouseDragged event for the widget, with the final position sourced from this mousepress event, as well as a released event
+					WIDGET::processMouseDragEvent(sContext, wkey, &widgetKeyCurrentState[wkey], true);
+
+					// consume the release event - prevent it from going to another widget on top of which the mouse may have released
+					psClickDownWidgetScreen.reset();
+
+					widgetKeyCurrentState[wkey].pressed = pressed;
+					lastReleasedKey_DEPRECATED = wkey;
+					continue;
+				}
+			}
+
+			widgetKeyCurrentState[wkey].pressed = pressed;
+
+			if (!mouseOverWidget)
 			{
-				psScreen->psForm->processClickRecursive(&sContext, wkey, pressed);
+				forEachOverlayScreen([&sContext, &mouseOverWidget, wkey, pressed](const OverlayScreen& overlay) -> bool
+				{
+					mouseOverWidget = overlay.psScreen->psForm->findMouseTargetRecursive(&sContext, wkey, pressed);
+					return !mouseOverWidget;
+				});
+			}
+			if (!mouseOverWidget)
+			{
+				mouseOverWidget = psScreen->psForm->findMouseTargetRecursive(&sContext, wkey, pressed);
+			}
+
+			if (mouseOverWidget)
+			{
+				widgProcessMouseClick(mouseOverWidget, &sContext, wkey, pressed);
 			}
 
 			lastReleasedKey_DEPRECATED = wkey;
 		}
 	}
 
+	sContext = W_CONTEXT::ZeroContext();
 	sContext.mx = mouseX();
 	sContext.my = mouseY();
-	bool didProcessClick = false;
-	forEachOverlayScreen([&sContext, &didProcessClick](const OverlayScreen& overlay) -> bool
+
+	// For each current key state
+	for (int key = WKEY_PRIMARY; key <= WKEY_SECONDARY; ++key)
 	{
-		didProcessClick = overlay.psScreen->psForm->processClickRecursive(&sContext, WKEY_NONE, true);  // Update highlights and psMouseOverWidget.
-		return !didProcessClick;
-	});
-	if (!didProcessClick)
-	{
-		psScreen->psForm->processClickRecursive(&sContext, WKEY_NONE, true);  // Update highlights and psMouseOverWidget.
+		// If widget_key is captured, and is down at the end of this batch of mouse events
+		if (widgetKeyCurrentState[key].pressed && widgetKeyCurrentState[key].capturedDragWidget)
+		{
+			// Trigger a mouseDragged event for the capture widget, with the final position (sourced from mouseX / mouseY)
+			WIDGET::processMouseDragEvent(sContext, static_cast<WIDGET_KEY>(key), &widgetKeyCurrentState[key], false);
+		}
 	}
-	if (psMouseOverWidget.lock() == nullptr)
+
+	std::shared_ptr<WIDGET> mouseOverWidget = nullptr;
+	forEachOverlayScreen([&sContext, &mouseOverWidget](const OverlayScreen& overlay) -> bool
+	{
+		mouseOverWidget = overlay.psScreen->psForm->findMouseTargetRecursive(&sContext, WKEY_NONE, true);
+		return !mouseOverWidget;
+	});
+	if (!mouseOverWidget)
+	{
+		mouseOverWidget = psScreen->psForm->findMouseTargetRecursive(&sContext, WKEY_NONE, true);
+	}
+	if (mouseOverWidget)
+	{
+		widgProcessMouseOver(mouseOverWidget, &sContext);
+	}
+	else
 	{
 		psMouseOverWidgetScreen.reset();
 	}
+
+	// reset context to screen context
+	sContext = W_CONTEXT::ZeroContext();
+	sContext.mx = mouseX();
+	sContext.my = mouseY();
 
 	/* Process the screen's widgets */
 	forEachOverlayScreen([&sContext](const OverlayScreen& overlay) -> bool
@@ -1349,7 +1567,10 @@ void W_SCREEN::setReturn(const std::shared_ptr<WIDGET> &psWidget)
 
 void WIDGET::displayRecursive(WidgetGraphicsContext const &context)
 {
-	if (context.clipContains(geometry())) {
+	bool widgetIsClipped = !context.clipContains(geometry());
+
+	if (!widgetIsClipped)
+	{
 		if (debugBoundingBoxesOnly)
 		{
 			// Display bounding boxes.
@@ -1368,12 +1589,17 @@ void WIDGET::displayRecursive(WidgetGraphicsContext const &context)
 		}
 	}
 
+	if (widgetIsClipped && !context.allowChildDisplayRecursiveIfSelfClipped())
+	{
+		return;
+	}
+
 	if (type == WIDG_FORM && ((W_FORM *)this)->disableChildren)
 	{
 		return;
 	}
 
-	auto childrenContext = context.translatedBy(x(), y());
+	auto childrenContext = context.translatedBy(x(), y()).setAllowChildDisplayRecursiveIfSelfClipped(false);
 
 	// If this is a clickable form, the widgets on it have to move when it's down.
 	if (type == WIDG_FORM && (((W_FORM *)this)->style & WFORM_NOCLICKMOVE) == 0)
@@ -1386,6 +1612,9 @@ void WIDGET::displayRecursive(WidgetGraphicsContext const &context)
 	}
 
 	// Display the widgets on this widget.
+	// NOTE: Draw them in the opposite order that clicks are processed, so behavior matches the visual.
+	// i.e. Since findMouseTargetRecursive handles processing children in decreasing z-order (i.e. "top-down")
+	//      we want to draw things in list order (bottom-up) so the "top-most" is drawn last
 	for (auto const &child: childWidgets)
 	{
 		if (child->visible())
@@ -1458,12 +1687,20 @@ void W_SCREEN::setFocus(const std::shared_ptr<WIDGET> &widget)
 {
 	if (auto locked = psFocus.lock())
 	{
+		if (locked == widget)
+		{
+			return; // do nothing - no change
+		}
+		psFocus = widget;
 		if (bWidgetsInitialized) // do not call focusLost if widgets have already shutdown / are not initialized
 		{
 			locked->focusLost();
 		}
 	}
-	psFocus = widget;
+	else
+	{
+		psFocus = widget;
+	}
 }
 
 void WidgSetAudio(WIDGET_AUDIOCALLBACK Callback, SWORD HilightID, SWORD ClickedID, SWORD ErrorID)
@@ -1509,6 +1746,28 @@ bool WidgetGraphicsContext::clipContains(WzRect const& rect) const
 	return !clipped || clipRect.contains({offset.x + rect.x(), offset.y + rect.y(), rect.width(), rect.height()});
 }
 
+bool WidgetGraphicsContext::clipIntersects(WzRect const& rect, WzRect* output_intersection) const
+{
+	if (!clipped)
+	{
+		if (output_intersection != nullptr)
+		{
+			*output_intersection = WzRect{offset.x + rect.x(), offset.y + rect.y(), rect.width(), rect.height()};
+		}
+		return true;
+	}
+	WzRect comparisonRect {offset.x + rect.x(), offset.y + rect.y(), rect.width(), rect.height()};
+	if (clipRect.intersects(comparisonRect))
+	{
+		if (output_intersection != nullptr)
+		{
+			*output_intersection = clipRect.intersectionWith(comparisonRect);
+		}
+		return true;
+	}
+	return false;
+}
+
 WidgetGraphicsContext WidgetGraphicsContext::translatedBy(int32_t x, int32_t y) const
 {
 	WidgetGraphicsContext newContext(*this);
@@ -1536,7 +1795,20 @@ WidgetGraphicsContext WidgetGraphicsContext::clippedBy(WzRect const &newRect) co
 	return newContext;
 }
 
+WidgetGraphicsContext WidgetGraphicsContext::setAllowChildDisplayRecursiveIfSelfClipped(bool val) const
+{
+	WidgetGraphicsContext newContext(*this);
+
+	newContext.allowChildDisplayIfSelfClipped = val;
+	return newContext;
+}
+
 std::weak_ptr<WIDGET> getMouseOverWidget()
 {
 	return psMouseOverWidget;
+}
+
+std::chrono::milliseconds widgGetClickHoldMS()
+{
+	return std::chrono::milliseconds(2000); // TODO: Make this configurable?
 }

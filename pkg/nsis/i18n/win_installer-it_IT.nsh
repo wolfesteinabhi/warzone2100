@@ -8,7 +8,7 @@ ${LangFileString} WZ_64BIT_AVAILABLE "È disponibile una versione a 64 bit di Wa
 
 ${LangFileString} WZ_64BIT_INSTALL_32BIT_AVAILABLE "Questa è la versione a 64 bit di Warzone 2100.$\r$\nScarica la versione a 32 bit da https://wz2100.net/ $\r$\nFai clic su OK per uscire dall'installazione."
 
-${LangFileString} WZ_ARM64_INSTALL_NON_ARM64 "Questa è la versione ARM64 di Warzone 2100, ma questo dispositivo non ha un processore ARM64. $\r$\nVisita https://wz2100.net/ per scaricare la versione appropriata per il tuo sistema (ad esempio: x64).$\r$\nProcedere comunque con l'installazione ARM64?"
+${LangFileString} WZ_ARM64_INSTALL_NON_ARM64 "Questa è la versione ARM64 di Warzone 2100, ma questo dispositivo non ha un processore ARM64. $\r$\n Per favore visita https://wz2100.net/ per scaricare la versione appropriata per il tuo sistema (ad esempio: x64).$\r$\n Procedere comunque con l'installazione ARM64?"
 
 ${LangFileString} WZ_GPL_NEXT "Successivo"
 
@@ -22,7 +22,7 @@ ${LangFileString} TEXT_SecFMVs_EngHi "Inglese (HQ)"
 ${LangFileString} DESC_SecFMVs_EngHi "Scarica e installa filmati di gioco in inglese a qualità superiore."
 
 ${LangFileString} TEXT_SecFMVs_Eng "Inglese"
-${LangFileString} DESC_SecFMVs_Eng "Scarica e installa i filmati di gioco in inglese."
+${LangFileString} DESC_SecFMVs_Eng "Scarica e installa i filmati delle scene tagliate di gioco in inglese."
 
 ${LangFileString} TEXT_SecFMVs_EngLo "Inglese (LQ)"
 ${LangFileString} DESC_SecFMVs_EngLo "Scarica e installa una versione a bassa qualità dei filmati di gioco in inglese."
@@ -33,8 +33,8 @@ ${LangFileString} DESC_SecFMVs_Ger "Scarica e installa i filmati di gioco in ted
 ${LangFileString} TEXT_SecNLS "File della lingua"
 ${LangFileString} DESC_SecNLS "Supporto per altre lingue diverse dall'inglese."
 
-${LangFileString} TEXT_SecNLS_WinFonts "Caratteri di Windows"
-${LangFileString} DESC_SecNLS_WinFonts "Includi la cartella dei caratteri di Windows nel percorso di ricerca. Abilitalo se vuoi usare dei caratteri personalizzati nel file di configurazione o se hai problemi con il quello standard. Può essere lento su Vista e versioni successive!"
+${LangFileString} TEXT_SecNLS_WinFonts "Font di Windows"
+${LangFileString} DESC_SecNLS_WinFonts "Includi la cartella font di Windows nel percorso di ricerca. Abilitalo se vuoi usare font personalizzati nel file di configurazione o hai problemi con il font standard. Può essere lento su Vista e versioni successive!"
 
 ${LangFileString} TEXT_SecMSSysLibraries "Importanti DLL Runtime di Microsoft"
 ${LangFileString} DESC_SecMSSysLibraries "Scarica e installa (o aggiorna) le librerie di sistema Microsoft Visual C++ redistributable, che alcuni componenti potrebbero richiedere per funzionare."

@@ -57,6 +57,15 @@ struct DROID_TEMPLATE : public BASE_STATS
 {
 	DROID_TEMPLATE();
 
+	BODY_STATS* getBodyStats() const;
+	BRAIN_STATS* getBrainStats() const;
+	PROPULSION_STATS* getPropulsionStats() const;
+	SENSOR_STATS* getSensorStats() const;
+	ECM_STATS* getECMStats() const;
+	REPAIR_STATS* getRepairStats() const;
+	CONSTRUCT_STATS* getConstructStats() const;
+	WEAPON_STATS* getWeaponStats(int weaponSlot) const;
+
 	/*!
 	 * The droid components.
 	 *
@@ -94,6 +103,39 @@ struct DROID : public BASE_OBJECT
 	DROID(uint32_t id, unsigned player);
 	~DROID();
 
+	bool isConstructionDroid() const;
+	// returns true if droid type is one of the Cyborg types
+	bool isCyborg() const;
+	// Returns true if the droid is a transporter.
+	bool isTransporter() const;
+	// Returns true if the droid has VTOL Propulsion and is a transporter.
+	bool isFlightBasedTransporter() const;
+	// Returns true if the droid has VTOL propulsion, and is not a transport.
+	bool isVtol() const;
+	// Returns true if the droid has VTOL propulsion and is moving.
+	bool isFlying() const;
+	// Just returns true if the droid's present body points aren't as high as the original
+	bool isDamaged() const;
+	// calculates the electronic resistance of a droid based on its experience level
+	int16_t droidResistance() const;
+	// true if a droid is currently attacking
+	bool isAttacking() const;
+	// true if a vtol droid currently returning to be rearmed
+	bool isVtolRearming() const;
+	// true if a droid is retreating for repair
+	bool isRetreatingForRepair() const;
+	// true if a droid is returning to base
+	bool isReturningToBase() const;
+
+	// Helper functions to get various droid stats.
+	BODY_STATS* getBodyStats() const;
+	BRAIN_STATS* getBrainStats() const;
+	PROPULSION_STATS* getPropulsionStats() const;
+	SENSOR_STATS* getSensorStats() const;
+	ECM_STATS* getECMStats() const;
+	REPAIR_STATS* getRepairStats() const;
+	CONSTRUCT_STATS* getConstructStats() const;
+
 	/// UTF-8 name of the droid. This is generated from the droid template
 	///  WARNING: This *can* be changed by the game player after creation & can be translated, do NOT rely on this being the same for everyone!
 	char            aName[MAX_STR_LENGTH];
@@ -110,12 +152,14 @@ struct DROID : public BASE_OBJECT
 	UDWORD          baseSpeed;                      ///< the base speed dependent on propulsion type
 	UDWORD          originalBody;                   ///< the original body points
 	uint32_t        experience;
+	SDWORD          shieldPoints;                   ///< Shield points of droid, which will be drained instead of health (default: -1 if no shields)
+	UDWORD          shieldRegenTime;                ///< How long should it be before the next regeneration step
+	UDWORD          shieldInterruptRegenTime;       ///< Standby time in case the shield was destroyed to begin regenerating again
 	uint32_t        kills;
 	UDWORD          lastFrustratedTime;             ///< Set when eg being stuck; used for eg firing indiscriminately at map features to clear the way
 	SWORD           resistance;                     ///< used in Electronic Warfare
 	// The group the droid belongs to
 	DROID_GROUP    *psGroup;
-	DROID          *psGrpNext;
 	STRUCTURE      *psBaseStruct;                   ///< a structure that this droid might be associated with. For VTOLs this is the rearming pad
 	// queued orders
 	SDWORD          listSize;                       ///< Gives the number of synchronised orders. Orders from listSize to the real end of the list may not affect game state.
@@ -143,7 +187,7 @@ struct DROID : public BASE_OBJECT
 	DROID_ACTION    action;
 	Vector2i        actionPos;
 	BASE_OBJECT    *psActionTarget[MAX_WEAPONS] = {}; ///< Action target object
-	UDWORD			lastCheckNearestTarget[MAX_WEAPONS] = {};	///< Set to the last gameTime that aiBestNearestTarget was called on for each weapon slot for this droid - compare only == / != gameTime
+	UDWORD			lastCheckNearestTargetFailed[MAX_WEAPONS] = {};	///< Set to the last gameTime that aiBestNearestTarget was called on for each weapon slot for this droid (and failed) - compare only == / != gameTime
 	UDWORD          actionStarted;                  ///< Game time action started
 	UDWORD          actionPoints;                   ///< number of points done by action since start
 	UDWORD          expectedDamageDirect;                 ///< Expected damage to be caused by all currently incoming direct projectiles. This info is shared between all players,
@@ -156,6 +200,9 @@ struct DROID : public BASE_OBJECT
 	uint8_t         blockedBits;                    ///< Bit set telling which tiles block this type of droid (TODO)
 	/* anim data */
 	SDWORD          iAudioID;
+	int32_t			heightAboveMap;					///< Current calculated height above the terrain (set for VTOL-propulsion units)
+	/* repair data */
+	uint16_t		underRepair;					///< Number of other droids / structures currently repairing this unit (does not include self-repair tech)
 };
 
 #endif // __INCLUDED_DROIDDEF_H__

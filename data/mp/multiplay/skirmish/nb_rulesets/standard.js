@@ -27,9 +27,13 @@ const randomTemplates = 0;
 
 // this function is used for avoiding AI cheats that appear due to
 // being able to build droids before designing them
-function iCanDesign() {
+function iCanDesign()
+{
 	if (difficulty === INSANE) // won't make INSANE much worse ...
+	{
 		return true;
+	}
+
 	return countFinishedStructList(structures.hqs) > 0;
 }
 
@@ -224,7 +228,7 @@ const weaponStats = {
 		],
 		// Extra things to research on this path, even if they don't lead to any new stuff
 		extras: [
-			"R-Wpn-MG-Damage08",
+			"R-Wpn-MG-Damage10",
 		],
 	},
 	flamers: {
@@ -589,7 +593,7 @@ const weaponStats = {
 		templates: [],
 		extras: [
 			"R-Wpn-MG-ROF03",
-			"R-Wpn-MG-Damage08",
+			"R-Wpn-MG-Damage10",
 		],
 	},
 	energy: {

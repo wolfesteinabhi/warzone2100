@@ -26,6 +26,8 @@
 #include "structuredef.h"
 #include <glm/fwd.hpp>
 
+struct iIMDShape;
+
 /*
 	Header file for component.c
 	Pumpkin Studios, EIDOS Interactive.
@@ -34,12 +36,12 @@
 bool setPlayerColour(UDWORD player, UDWORD col);
 UBYTE getPlayerColour(UDWORD pl);
 
-UDWORD getComponentDroidRadius(DROID *psDroid);
-UDWORD getComponentDroidTemplateRadius(DROID_TEMPLATE *psDroid);
-UDWORD getComponentRadius(BASE_STATS *psComponent);
-UDWORD getResearchRadius(BASE_STATS *Stat);
-UDWORD getStructureSizeMax(STRUCTURE *psStructure);
-UDWORD getStructureStatSizeMax(STRUCTURE_STATS *Stats);
+UDWORD getComponentDroidRadius(const DROID *psDroid);
+UDWORD getComponentDroidTemplateRadius(const DROID_TEMPLATE *psDroid);
+UDWORD getComponentRadius(const BASE_STATS *psComponent);
+UDWORD getResearchRadius(const BASE_STATS *Stat);
+UDWORD getStructureSizeMax(const STRUCTURE *psStructure);
+UDWORD getStructureStatSizeMax(const STRUCTURE_STATS *Stats);
 
 #define BLIP_ANIM_DURATION			(200)
 #define OBJECT_RADIUS				(128)
@@ -59,54 +61,54 @@ UDWORD getStructureStatSizeMax(STRUCTURE_STATS *Stats);
 #define LARGE_FEATURE_SCALE			(16)
 
 #define TOWER_HEIGHT    100
-UDWORD getStructureStatHeight(STRUCTURE_STATS *psStat);
+UDWORD getStructureStatHeight(const STRUCTURE_STATS *psStat);
 
-void displayIMDButton(iIMDShape *IMDShape, const Vector3i *Rotation, const Vector3i *Position, int scale);
-void displayStructureButton(STRUCTURE *psStructure, const Vector3i *Rotation, const Vector3i *Position, int scale);
-void displayStructureStatButton(STRUCTURE_STATS *Stats, const Vector3i *Rotation, const Vector3i *Position, int scale);
-void displayComponentButton(BASE_STATS *Stat, const Vector3i *Rotation, const Vector3i *Position, int scale);
-void displayResearchButton(BASE_STATS *Stat, const Vector3i *Rotation, const Vector3i *Position, int scale);
-void displayComponentButtonTemplate(DROID_TEMPLATE *psTemplate, const Vector3i *Rotation, const Vector3i *Position, int scale);
-void displayComponentButtonObject(DROID *psDroid, const Vector3i *Rotation, const Vector3i *Position, int scale);
+void displayIMDButton(const iIMDShape *IMDShape, const Vector3i *Rotation, const Vector3i *Position, int scale);
+void displayStructureButton(const STRUCTURE *psStructure, const Vector3i *Rotation, const Vector3i *Position, int scale);
+void displayStructureStatButton(const STRUCTURE_STATS *Stats, const Vector3i *Rotation, const Vector3i *Position, int scale);
+void displayComponentButton(const BASE_STATS *Stat, const Vector3i *Rotation, const Vector3i *Position, int scale);
+void displayResearchButton(const BASE_STATS *Stat, const Vector3i *Rotation, const Vector3i *Position, int scale);
+void displayComponentButtonTemplate(const DROID_TEMPLATE *psTemplate, const Vector3i *Rotation, const Vector3i *Position, int scale);
+void displayComponentButtonObject(const DROID *psDroid, const Vector3i *Rotation, const Vector3i *Position, int scale);
 void displayComponentObject(DROID *psDroid, const glm::mat4 &viewMatrix, const glm::mat4 &perspectiveViewMatrix);
 
-void compPersonToBits(DROID *psDroid);
+void compPersonToBits(DROID *psDroid, Vector3f &velocity);
 
 SDWORD rescaleButtonObject(SDWORD radius, SDWORD baseScale, SDWORD baseRadius);
-void destroyFXDroid(DROID *psDroid, unsigned impactTime);
+void destroyFXDroid(DROID *psDroid, unsigned impactTime, Vector3f &velocity);
 
-void drawMuzzleFlash(WEAPON sWeap, iIMDShape *weaponImd, iIMDShape *flashImd, PIELIGHT buildingBrightness, int pieFlag, int pieFlagData, glm::mat4 modelMatrix, const glm::mat4 &viewMatrix, UBYTE colour = 0);
+void drawMuzzleFlash(WEAPON sWeap, const iIMDShape *weaponImd, const iIMDShape *flashImd, PIELIGHT buildingBrightness, int pieFlag, int pieFlagData, glm::mat4 modelMatrix, const glm::mat4 &viewMatrix, float heightAboveTerrain, UBYTE colour = 0);
 
 /* Pass in the stats you're interested in and the COMPONENT - double reference, but works. NOTE: Unused!*/
 #define PART_IMD(STATS,DROID,COMPONENT,PLAYER)	(STATS[DROID->asBits[COMPONENT]].pIMD)
 
 /* Get the chassis imd */
-#define BODY_IMD(DROID,PLAYER)	(asBodyStats[DROID->asBits[COMP_BODY]].pIMD)
+#define BODY_IMD(DROID,PLAYER)	((DROID)->getBodyStats()->pIMD)
 /* Get the brain imd - NOTE: Unused!*/
-#define BRAIN_IMD(DROID,PLAYER)	(asBrainStats[DROID->asBits[COMP_BRAIN]].pIMD)
+#define BRAIN_IMD(DROID,PLAYER)	(DROID->getBrainStats()->pIMD)
 /* Get the weapon imd */
-#define WEAPON_IMD(DROID,WEAPON_NUM)	(asWeaponStats[DROID->asWeaps[WEAPON_NUM].nStat].pIMD)
+#define WEAPON_IMD(DROID,WEAPON_NUM)	(DROID->getWeaponStats(WEAPON_NUM)->pIMD)
 /* Get the propulsion imd  THIS IS A LITTLE MORE COMPLICATED NOW!*/
 //#define PROPULSION_IMD(DROID,PLAYER)	(asPropulsionStats[DROID->asBits[COMP_PROPULSION]].pIMD[PLAYER])
 /* Get the sensor imd */
-#define SENSOR_IMD(DROID,PLAYER)	(asSensorStats[DROID->asBits[COMP_SENSOR]].pIMD)
+#define SENSOR_IMD(DROID,PLAYER)	(DROID->getSensorStats()->pIMD)
 /* Get an ECM imd!?! */
-#define ECM_IMD(DROID,PLAYER)	(asECMStats[DROID->asBits[COMP_ECM]].pIMD)
+#define ECM_IMD(DROID,PLAYER)	(DROID->getECMStats()->pIMD)
 /* Get an Repair imd!?! */
-#define REPAIR_IMD(DROID,PLAYER)	(asRepairStats[DROID->asBits[COMP_REPAIRUNIT]].pIMD)
+#define REPAIR_IMD(DROID,PLAYER)	(DROID->getRepairStats()->pIMD)
 /* Get a construct imd */
-#define CONSTRUCT_IMD(DROID,PLAYER)	(asConstructStats[DROID->asBits[COMP_CONSTRUCT]].pIMD)
+#define CONSTRUCT_IMD(DROID,PLAYER)	(DROID->getConstructStats()->pIMD)
 /* Get a weapon mount imd*/
-#define WEAPON_MOUNT_IMD(DROID,WEAPON_NUM)	(asWeaponStats[DROID->asWeaps[WEAPON_NUM].nStat].pMountGraphic)
+#define WEAPON_MOUNT_IMD(DROID,WEAPON_NUM)	(DROID->getWeaponStats(WEAPON_NUM)->pMountGraphic)
 /* Get a sensor mount imd*/
-#define SENSOR_MOUNT_IMD(DROID,PLAYER)	(asSensorStats[DROID->asBits[COMP_SENSOR]].pMountGraphic)
+#define SENSOR_MOUNT_IMD(DROID,PLAYER)	(DROID->getSensorStats()->pMountGraphic)
 /* Get a construct mount imd*/
-#define CONSTRUCT_MOUNT_IMD(DROID,PLAYER)	(asConstructStats[DROID->asBits[COMP_CONSTRUCT]].pMountGraphic)
+#define CONSTRUCT_MOUNT_IMD(DROID,PLAYER)	(DROID->getConstructStats()->pMountGraphic)
 /* Get a ecm mount imd*/
-#define ECM_MOUNT_IMD(DROID,PLAYER)	(asECMStats[DROID->asBits[COMP_ECM]].pMountGraphic)
+#define ECM_MOUNT_IMD(DROID,PLAYER)	(DROID->getECMStats()->pMountGraphic)
 /* Get a repair mount imd*/
-#define REPAIR_MOUNT_IMD(DROID,PLAYER)	(asRepairStats[DROID->asBits[COMP_REPAIRUNIT]].pMountGraphic)
+#define REPAIR_MOUNT_IMD(DROID,PLAYER)	(DROID->getRepairStats()->pMountGraphic)
 /* Get a muzzle flash pie*/
-#define MUZZLE_FLASH_PIE(DROID,WEAPON_NUM)	(asWeaponStats[DROID->asWeaps[WEAPON_NUM].nStat].pMuzzleGraphic)
+#define MUZZLE_FLASH_PIE(DROID,WEAPON_NUM)	(DROID->getWeaponStats(WEAPON_NUM)->pMuzzleGraphic)
 
 #endif // __INCLUDED_SRC_COMPONENT_H__

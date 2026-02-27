@@ -33,6 +33,7 @@
 #include "stdinreader.h"
 #include "modding.h"
 #include "version.h"
+#include "mission.h"
 
 #include <string>
 #include <tuple>
@@ -64,7 +65,7 @@ static std::tuple<uint32_t, uint32_t> getDroidHPPercentageAndExperience(uint32_t
 	uint64_t totalHP = 0;
 	uint64_t totalExp = 0;
 	uint64_t numDroids = 0;
-	for (const DROID *psDroid = apsDroidLists[player]; psDroid; psDroid = psDroid->psNext)
+	for (const DROID *psDroid : apsDroidLists[player])
 	{
 		if (psDroid->died)
 		{
@@ -88,7 +89,7 @@ static uint32_t getNumOilRigs(uint32_t player)
 	}
 
 	uint32_t result = 0;
-	for (STRUCTURE *psStruct = apsStructLists[player]; psStruct; psStruct = psStruct->psNext)
+	for (const STRUCTURE *psStruct : apsStructLists[player])
 	{
 		if (!psStruct->died
 			&& (REF_RESOURCE_EXTRACTOR == psStruct->pStructureType->type))
@@ -104,6 +105,10 @@ static nlohmann::json buildGameDetailsOutputJSON(std::chrono::system_clock::time
 	nlohmann::json gameObj = nlohmann::json::object();
 	gameObj["version"] = version_getVersionString();
 	gameObj["mapName"] = game.map;
+	if (!game.hash.isZero())
+	{
+		gameObj["mapHash"] = game.hash.toString();
+	}
 	gameObj["baseType"] = game.base;
 	gameObj["alliancesType"] = game.alliance;
 	gameObj["powerType"] = game.power;
@@ -236,6 +241,7 @@ static nlohmann::json convertToOutputJSON(const GameStoryLogger::GameFrame& fram
 		j["team"] = f.team;
 		j["colour"] = f.colour;
 		j["faction"] = f.faction;
+		j["publicKey"] = f.publicKey;
 		// data from the frame
 		j[mapPlayerDataOutputName("droidsLost", naming)] = p.droidsLost;
 		j[mapPlayerDataOutputName("structuresLost", naming)] = p.structuresLost;
@@ -258,6 +264,11 @@ static nlohmann::json convertToOutputJSON(const GameStoryLogger::GameFrame& fram
 		j[mapPlayerDataOutputName("recentResearchPotential", naming)] = p.recentResearchPotential;
 		j[mapPlayerDataOutputName("recentResearchPerformance", naming)] = p.recentResearchPerformance;
 		j[mapPlayerDataOutputName("usertype", naming)] = mapPlayerUserTypeOutputValue(p.usertype, naming);
+
+		if (p.playerLeftGameTime.has_value())
+		{
+			j["playerLeftGameTime"] = p.playerLeftGameTime.value();
+		}
 
 		size_t outputIndex = idx;
 		switch (outputKey)
@@ -331,11 +342,12 @@ void GameStoryLogger::logStartGame()
 	for (int i = 0; i < game.maxPlayers; i++)
 	{
 		FixedPlayerAttributes playerAttrib;
-		playerAttrib.name = NetPlay.players[i].name;
+		playerAttrib.name = (strlen(NetPlay.players[i].name) == 0) ? "" : getPlayerName(i);
 		playerAttrib.position = NetPlay.players[i].position;
 		playerAttrib.team = NetPlay.players[i].team;
 		playerAttrib.colour = NetPlay.players[i].colour;
 		playerAttrib.faction = NetPlay.players[i].faction;
+		playerAttrib.publicKey = base64Encode(getOutputPlayerIdentity(i).toBytes(EcKey::Public));
 
 		startingPlayerAttributes.push_back(playerAttrib);
 	}
@@ -355,7 +367,8 @@ void GameStoryLogger::logGameFrame()
 	}
 
 	// throttle recording of game frames
-	if (lastRecordedGameFrameTime > 0 && (gameTime - lastRecordedGameFrameTime < frameLoggingInterval))
+	// (if frameLoggingInterval == 0, ongoing frame logging is disabled - however, always output the first frame regardless!)
+	if (lastRecordedGameFrameTime > 0 && ((frameLoggingInterval == 0) || (gameTime - lastRecordedGameFrameTime < frameLoggingInterval)))
 	{
 		return;
 	}
@@ -367,7 +380,7 @@ void GameStoryLogger::logGameFrame()
 		// output frame
 		auto reportJSON = genFrameReport(gameFrames.back(), outputKey, outputNaming);
 		std::string reportJSONStr = std::string("__REPORT__") + reportJSON.dump(-1, ' ', false, nlohmann::ordered_json::error_handler_t::replace) + "__ENDREPORT__";
-		outputLine(reportJSONStr);
+		outputLine(std::move(reportJSONStr));
 	}
 }
 
@@ -402,7 +415,7 @@ void GameStoryLogger::logDebugModeChange(bool enabled)
 	if (outputModes.anyEnabled())
 	{
 		std::string reportJSONStr = std::string("__DEBUGMODE__") + ((enabled) ? "true" : "false") + "__ENDDEBUGMODE__";
-		outputLine(reportJSONStr);
+		outputLine(std::move(reportJSONStr));
 	}
 }
 
@@ -416,12 +429,15 @@ void GameStoryLogger::logGameOver()
 
 	gameEndRealTime = std::chrono::system_clock::now();
 
+	gameFrames.push_back(genCurrentFrame());
+	lastRecordedGameFrameTime = gameTime;
+
 	if (outputModes.anyEnabled())
 	{
 		bool hitTimeout = (game.gameTimeLimitMinutes > 0) ? (gameTime >= (game.gameTimeLimitMinutes * 60 * 1000)) : false;
 		auto reportJSON = genEndOfGameReport(outputKey, outputNaming, hitTimeout);
 		std::string reportJSONStr = std::string("__REPORTextended__") + reportJSON.dump(-1, ' ', false, nlohmann::ordered_json::error_handler_t::replace) + "__ENDREPORTextended__";
-		outputLine(reportJSONStr);
+		outputLine(std::move(reportJSONStr));
 	}
 
 	if (fileHandle)
@@ -465,7 +481,7 @@ GameStoryLogger::GameFrame GameStoryLogger::genCurrentFrame() const
 	{
 		GameFrame::PlayerStats playerStats;
 		const PLAYERSTATS& mStats = getMultiStats(i);
-		
+
 		playerStats.droidsLost = mStats.recentDroidsLost;
 		playerStats.structuresLost = mStats.recentStructuresLost;
 		playerStats.kills = mStats.recentDroidsKilled;
@@ -476,7 +492,7 @@ GameStoryLogger::GameFrame GameStoryLogger::genCurrentFrame() const
 		playerStats.structs = countAllStructures(i);
 		playerStats.researchComplete = mStats.recentResearchComplete;
 		playerStats.power = getPower(i);
-		playerStats.score = mStats.recentScore;
+		playerStats.score = static_cast<int32_t>(mStats.recentScore);
 		auto hpAndSummExp = getDroidHPPercentageAndExperience(i);
 		playerStats.hp = std::get<0>(hpAndSummExp);
 		playerStats.summExp = std::get<1>(hpAndSummExp);
@@ -496,6 +512,11 @@ GameStoryLogger::GameFrame GameStoryLogger::genCurrentFrame() const
 			{
 				playerStats.usertype = it->second;
 			}
+		}
+
+		if (i < ingame.playerLeftGameTime.size() && ingame.playerLeftGameTime[i].has_value())
+		{
+			playerStats.playerLeftGameTime = ingame.playerLeftGameTime[i];
 		}
 
 		frame.playerData.push_back(playerStats);
@@ -521,9 +542,9 @@ nlohmann::json GameStoryLogger::genFrameReport(const GameFrame& frame, OutputKey
 	return report;
 }
 
-nlohmann::json GameStoryLogger::genEndOfGameReport(OutputKey key, OutputNaming naming, bool timeout) const
+nlohmann::ordered_json GameStoryLogger::genEndOfGameReport(OutputKey key, OutputNaming naming, bool timeout) const
 {
-	nlohmann::json report = nlohmann::json::object();
+	nlohmann::ordered_json report = nlohmann::json::object();
 
 	report["JSONversion"] = CurrentGameLogOutputJSONVersion;
 	report["gameTime"] = gameTime;
@@ -535,6 +556,7 @@ nlohmann::json GameStoryLogger::genEndOfGameReport(OutputKey key, OutputNaming n
 	report["game"] = buildGameDetailsOutputJSON(gameStartRealTime);
 	report["game"]["timeGameEnd"] = gameTime;
 	report["game"]["timeout"] = timeout;
+	report["game"]["cheated"] = Cheated;
 	report["endDate"] = std::chrono::duration_cast<std::chrono::milliseconds>(gameEndRealTime.time_since_epoch()).count();
 
 	return report;
@@ -547,6 +569,7 @@ inline void to_json(nlohmann::json& j, const GameStoryLogger::FixedPlayerAttribu
 	j["team"] = p.team;
 	j["colour"] = p.colour;
 	j["faction"] = p.faction;
+	j["publicKey"] = p.publicKey;
 }
 
 inline void from_json(const nlohmann::json& j, GameStoryLogger::FixedPlayerAttributes& p) {
@@ -555,6 +578,7 @@ inline void from_json(const nlohmann::json& j, GameStoryLogger::FixedPlayerAttri
 	p.team = j.at("team").get<int32_t>();
 	p.colour = j.at("colour").get<int32_t>();
 	p.faction = static_cast<FactionID>(j.at("faction").get<uint8_t>());
+	p.publicKey = j.at("publicKey").get<std::string>();
 }
 
 inline void to_json(nlohmann::json& j, const GameStoryLogger::GameFrame::PlayerStats& p) {
@@ -580,6 +604,10 @@ inline void to_json(nlohmann::json& j, const GameStoryLogger::GameFrame::PlayerS
 	j["recentResearchPotential"] = p.recentResearchPotential;
 	j["recentResearchPerformance"] = p.recentResearchPerformance;
 	j["usertype"] = p.usertype;
+	if (p.playerLeftGameTime.has_value())
+	{
+		j["playerLeftGameTime"] = p.playerLeftGameTime.value();
+	}
 }
 
 inline void from_json(const nlohmann::json& j, GameStoryLogger::GameFrame::PlayerStats& p) {
@@ -593,7 +621,7 @@ inline void from_json(const nlohmann::json& j, GameStoryLogger::GameFrame::Playe
 	p.structs = j.at("structs").get<uint32_t>();
 	p.researchComplete = j.at("researchComplete").get<uint32_t>();
 	p.power = j.at("power").get<uint32_t>();
-	p.score = j.at("score").get<uint32_t>();
+	p.score = j.at("score").get<int32_t>();
 	p.hp = j.at("hp").get<uint32_t>();
 	p.summExp = j.at("summExp").get<uint32_t>();
 	p.oilRigs = j.at("oilRigs").get<uint32_t>();
@@ -604,6 +632,13 @@ inline void from_json(const nlohmann::json& j, GameStoryLogger::GameFrame::Playe
 	p.recentResearchPotential = j.at("recentResearchPotential").get<uint64_t>();
 	p.recentResearchPerformance = j.at("recentResearchPerformance").get<uint64_t>();
 	p.usertype = j.at("usertype").get<std::string>();
+
+	p.playerLeftGameTime = nullopt;
+	auto it = j.find("playerLeftGameTime");
+	if (it != j.end())
+	{
+		p.playerLeftGameTime = it.value().get<uint32_t>();
+	}
 }
 
 inline void to_json(nlohmann::json& j, const GameStoryLogger::GameFrame& p) {
@@ -643,11 +678,12 @@ inline void from_json(const nlohmann::json& j, GameStoryLogger::DebugModeEvent& 
 	p.gameTime = j.at("gameTime").get<uint32_t>();
 }
 
-void GameStoryLogger::outputLine(const std::string &line)
+void GameStoryLogger::outputLine(std::string &&line)
 {
+	line.append("\n");
 	if (outputModes.cmdInterface)
 	{
-		wz_command_interface_output("%s\n", line.c_str());
+		wz_command_interface_output_str(line.c_str());
 	}
 	if (outputModes.logFile)
 	{
@@ -655,15 +691,8 @@ void GameStoryLogger::outputLine(const std::string &line)
 		{
 			if (WZ_PHYSFS_writeBytes(fileHandle, line.c_str(), line.size()) != line.size())
 			{
-				// Failed to write data to file
+				// Failed to write line to file
 				debug(LOG_ERROR, "Could not write to output file; PHYSFS error: %s", WZ_PHYSFS_getLastError());
-				PHYSFS_close(fileHandle);
-				fileHandle = nullptr;
-			}
-			if (WZ_PHYSFS_writeBytes(fileHandle, "\n", 1) != 1)
-			{
-				// Failed to write newline to file
-				debug(LOG_ERROR, "Could not write newline to output file; PHYSFS error: %s", WZ_PHYSFS_getLastError());
 				PHYSFS_close(fileHandle);
 				fileHandle = nullptr;
 			}

@@ -17,6 +17,7 @@
 	Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 */
 #include "frame.h"
+#include "string_ext.h"
 
 #include <sstream>
 #include <vector>
@@ -51,43 +52,44 @@ using nonstd::nullopt;
 #endif
 // Language names (http://en.wikipedia.org/wiki/List_of_ISO_639-2_codes)
 #define LANG_NAME_ARABIC "العربية"
-#define LANG_NAME_BASQUE "euskara"
+#define LANG_NAME_BASQUE "Euskara"
 #define LANG_NAME_BULGARIAN "български език"
-#define LANG_NAME_CATALAN "català"
+#define LANG_NAME_CATALAN "Català"
 #define LANG_NAME_CHINESE_SIMPLIFIED "汉语"
 #define LANG_NAME_CHINESE_TRADITIONAL "漢語"
 #define LANG_NAME_CROATIAN "Hrvatski"
-#define LANG_NAME_CZECH "česky"
+#define LANG_NAME_CZECH "Česky"
 #define LANG_NAME_DANISH "Dansk"
 #define LANG_NAME_DUTCH "Nederlands"
 #define LANG_NAME_ENGLISH "English"
 #define LANG_NAME_ENGLISH_UK "British English"
 #define LANG_NAME_ESTONIAN "Eesti Keel"
-#define LANG_NAME_FINNISH "suomi"
+#define LANG_NAME_FINNISH "Suomi"
 #define LANG_NAME_FRENCH "Français"
-#define LANG_NAME_FRISIAN_NETHERLANDS "frysk"
+#define LANG_NAME_FRISIAN_NETHERLANDS "Frysk"
 #define LANG_NAME_GERMAN "Deutsch"
 #define LANG_NAME_GREEK "Ελληνικά"
-#define LANG_NAME_HUNGARIAN "magyar"
+#define LANG_NAME_HUNGARIAN "Magyar"
 #define LANG_NAME_INDONESIAN "Bahasa Indonesia"
 #define LANG_NAME_IRISH "Imruagadh"
 #define LANG_NAME_ITALIAN "Italiano"
 #define LANG_NAME_KOREAN "한국어"
-#define LANG_NAME_LATIN "latine"
-#define LANG_NAME_LATVIAN "latviešu valoda"
-#define LANG_NAME_LITHUANIAN "lietuvių kalba"
+#define LANG_NAME_LATIN "Latine"
+#define LANG_NAME_LATVIAN "Latviešu valoda"
+#define LANG_NAME_LITHUANIAN "Lietuvių kalba"
 #define LANG_NAME_NORWEGIAN "Norsk"
-#define LANG_NAME_NORWEGIAN_NYNORSK "nynorsk"
+#define LANG_NAME_NORWEGIAN_NYNORSK "Nynorsk"
 #define LANG_NAME_POLISH "Polski"
 #define LANG_NAME_PORTUGUESE_BRAZILIAN "Português Brasileiro"
 #define LANG_NAME_PORTUGUESE "Português"
-#define LANG_NAME_ROMANIAN "română"
+#define LANG_NAME_ROMANIAN "Română"
 #define LANG_NAME_RUSSIAN "Русский"
+#define LANG_NAME_SERBIAN "Srpski"
 #define LANG_NAME_SLOVAK "Slovensky"
 #define LANG_NAME_SLOVENIAN "Slovenski"
 #define LANG_NAME_SPANISH "Español"
-#define LANG_NAME_SWEDISH "svenska"
-#define LANG_NAME_SWEDISH_SWEDEN "svenska (Sverige)"
+#define LANG_NAME_SWEDISH "Svenska"
+#define LANG_NAME_SWEDISH_SWEDEN "Svenska (Sverige)"
 #define LANG_NAME_TURKISH "Türkçe"
 #define LANG_NAME_UKRAINIAN "Українська"
 #define LANG_NAME_UZBEK_CYRILLIC "Ўзбек"
@@ -134,7 +136,7 @@ static const struct
 	{ "ga_IE", LANG_NAME_IRISH, "ga", LANG_IRISH, SUBLANG_IRISH_IRELAND },
 	{ "hr", LANG_NAME_CROATIAN, "hr", LANG_CROATIAN, SUBLANG_DEFAULT },
 	{ "hu", LANG_NAME_HUNGARIAN, "hu", LANG_HUNGARIAN, SUBLANG_DEFAULT },
-	{ "id", LANG_NAME_INDONESIAN, "id_ID", LANG_INDONESIAN, SUBLANG_DEFAULT },
+	{ "id", LANG_NAME_INDONESIAN, "id", LANG_INDONESIAN, SUBLANG_DEFAULT },
 	{ "it", LANG_NAME_ITALIAN, "it", LANG_ITALIAN, SUBLANG_ITALIAN },
 	{ "ko_KR", LANG_NAME_KOREAN, "ko", LANG_KOREAN, SUBLANG_DEFAULT },
 //	{ "la", LANG_NAME_LATIN, "la", LANG_LATIN, SUBLANG_DEFAULT },
@@ -151,6 +153,7 @@ static const struct
 	{ "ru", LANG_NAME_RUSSIAN, "ru", LANG_RUSSIAN, SUBLANG_DEFAULT },
 	{ "sk", LANG_NAME_SLOVAK, "sk", LANG_SLOVAK, SUBLANG_DEFAULT },
 	{ "sl_SI", LANG_NAME_SLOVENIAN, "sl", LANG_SLOVENIAN, SUBLANG_DEFAULT },
+	{ "sr_RS", LANG_NAME_SERBIAN, "sr_CS", LANG_SERBIAN, SUBLANG_SERBIAN_LATIN }, // Due to how gettext-libintl maps Win32 LangIDs to locales, use sr_CS for Windows
 #if (WINVER >= 0x0600)
 //	{ "sv_SE", LANG_NAME_SWEDISH_SWEDEN, LANG_SWEDISH, SUBLANG_SWEDISH_SWEDEN },
 #else
@@ -198,7 +201,7 @@ static const struct
 	{ "ga_IE", LANG_NAME_IRISH, "ga", "ga_IE.UTF-8", "ga" },
 	{ "hr", LANG_NAME_CROATIAN, "hr", "hr_HR.UTF-8", "hr_HR" },
 	{ "hu", LANG_NAME_HUNGARIAN, "hu", "hu_HU.UTF-8", "hu_HU" },
-	{ "id", LANG_NAME_INDONESIAN, "id_ID", "id_ID.UTF-8", "id" },
+	{ "id", LANG_NAME_INDONESIAN, "id", "id_ID.UTF-8", "id" },
 	{ "it", LANG_NAME_ITALIAN, "it", "it_IT.UTF-8", "it_IT" },
 	{ "ko_KR", LANG_NAME_KOREAN, "ko", "ko_KR.UTF-8", "ko" },
 	{ "la", LANG_NAME_LATIN, "la", "la.UTF-8", "la" },
@@ -214,6 +217,7 @@ static const struct
 	{ "ru", LANG_NAME_RUSSIAN, "ru", "ru_RU.UTF-8", "ru_RU" },
 	{ "sk", LANG_NAME_SLOVAK, "sk", "sk_SK.UTF-8", "sk_SK" },
 	{ "sl_SI", LANG_NAME_SLOVENIAN, "sl", "sl_SI.UTF-8", "sl" },
+	{ "sr_RS", LANG_NAME_SERBIAN, "sr_RS", "sr_RS.UTF-8@latin", "sr_RS" }, // Use the newer "sr_RS" identifier (with optional @latin)
 //	{ "sv_SE", LANG_NAME_SWEDISH_SWEDEN, "sv_SE.UTF-8", "sv" },
 //	{ "sv", LANG_NAME_SWEDISH, "sv.UTF-8", "sv" },
 	{ "tr", LANG_NAME_TURKISH, "tr", "tr_TR.UTF-8", "tr_TR" },
@@ -331,6 +335,16 @@ static bool setLocaleWindows(USHORT usPrimaryLanguage, USHORT usSubLanguage)
 
 	return success;
 }
+#  elif defined(__EMSCRIPTEN__)
+static bool setLocaleEmscripten(const char *localeFilename)
+{
+	setlocale(LC_ALL, localeFilename);
+
+	const char * numericLocale = setlocale(LC_NUMERIC, "C"); // set radix character to the period (".")
+	debug(LOG_WZ, "LC_NUMERIC: \"%s\"", (numericLocale != nullptr) ? numericLocale : "<null>");
+
+	return true;
+}
 #  else
 /*!
  * Set the prefered locale
@@ -426,6 +440,8 @@ bool setLanguage(const char *language)
 
 #  if defined(WZ_OS_WIN)
 			return setLocaleWindows(map[i].usPrimaryLanguage, map[i].usSubLanguage);
+#  elif defined(__EMSCRIPTEN__)
+			return setLocaleEmscripten(map[i].localeFilename);
 #  else
 			return setLocaleUnix(map[i].locale) || setLocaleUnix(map[i].localeFallback) || setLocaleUnix_LANGUAGEFallback(map[i].localeFilename);
 #  endif
@@ -560,9 +576,76 @@ static bool checkSupportsLANGUAGEenvVarOverride()
 #endif // defined(_LIBINTL_H) && defined(LIBINTL_VERSION)
 }
 
+#if defined(__EMSCRIPTEN__)
+static std::string getEmscriptenDefaultLanguage()
+{
+	auto pEnvLang = getenv("LANG");
+	if (pEnvLang)
+	{
+		std::string defaultLanguage = pEnvLang;
+		// Remove any .UTF-8 suffix
+		if (strEndsWith(defaultLanguage, ".UTF-8"))
+		{
+			defaultLanguage = defaultLanguage.substr(0, defaultLanguage.size() - 6);
+		}
+		// Find matching closest language (if present)
+		for (unsigned i = 0; i < ARRAY_SIZE(map); i++)
+		{
+			if (strcmp(defaultLanguage.c_str(), map[i].language) == 0)
+			{
+				return map[i].language;
+			}
+		}
+		for (unsigned i = 0; i < ARRAY_SIZE(map); i++)
+		{
+			if (strcmp(defaultLanguage.c_str(), map[i].localeFilename) == 0)
+			{
+				return map[i].language;
+			}
+		}
+		for (unsigned i = 0; i < ARRAY_SIZE(map); i++)
+		{
+			if (strcmp(defaultLanguage.c_str(), map[i].localeFallback) == 0)
+			{
+				return map[i].language;
+			}
+		}
+	}
+	return "";
+}
+#endif
+
+static bool wzBindAllWZTextDomains(const char* resourcePath)
+{
+	// Bind the "main" message catalog ("warzone2100")
+	auto textdomainDirectory = wzBindTextDomain(PACKAGE, resourcePath);
+	(void)bind_textdomain_codeset(PACKAGE, "UTF-8");
+	if (textdomainDirectory.empty())
+	{
+		// Failed to bind main message catalog - treat as critical failure
+		return false;
+	}
+
+	// Bind the guide topics message catalog
+	textdomainDirectory = wzBindTextDomain(PACKAGE "_guide", resourcePath);
+	(void)bind_textdomain_codeset(PACKAGE "_guide", "UTF-8");
+	if (textdomainDirectory.empty())
+	{
+		// Non-fatal failure
+		debug(LOG_INFO, "initI18n: Failed to bind guide message catalog");
+	}
+
+	return true;
+}
+
 void initI18n()
 {
-	std::string textdomainDirectory;
+	bool boundAtLeastMainTextDomain = false;
+	std::string defaultLanguage = ""; // "" is system default (in most cases)
+
+#if defined(__EMSCRIPTEN__)
+	defaultLanguage = getEmscriptenDefaultLanguage();
+#endif
 
 #if defined(_LIBINTL_H) && defined(LIBINTL_VERSION)
 	int wz_libintl_maj = LIBINTL_VERSION >> 16;
@@ -578,7 +661,7 @@ void initI18n()
 		if (CFURLGetFileSystemRepresentation(resourceURL, true, (UInt8 *) resourcePath, PATH_MAX))
 		{
 			sstrcat(resourcePath, "/locale");
-			textdomainDirectory = wzBindTextDomain(PACKAGE, resourcePath);
+			boundAtLeastMainTextDomain = wzBindAllWZTextDomains(resourcePath);
 		}
 		else
 		{
@@ -601,29 +684,29 @@ void initI18n()
 	debug(LOG_WZ, "Install prefix: %s", prefixDir.c_str());
 	const std::string dirSeparator(PHYSFS_getDirSeparator());
 	std::string localeDir = prefixDir + dirSeparator + WZ_LOCALEDIR;
-	textdomainDirectory = wzBindTextDomain(PACKAGE, localeDir.c_str());
+	boundAtLeastMainTextDomain = wzBindAllWZTextDomains(localeDir.c_str());
 	#else
 	// Treat WZ_LOCALEDIR as an absolute path, and use directly
-	textdomainDirectory = wzBindTextDomain(PACKAGE, WZ_LOCALEDIR);
+	boundAtLeastMainTextDomain = wzBindAllWZTextDomains(WZ_LOCALEDIR);
 	#endif
 # else
 	// Old locale-dir setup (autotools)
-	textdomainDirectory = wzBindTextDomain(PACKAGE, LOCALEDIR);
+	boundAtLeastMainTextDomain = wzBindAllWZTextDomains(LOCALEDIR);
 # endif
 #endif // ifdef WZ_OS_MAC
-	if (textdomainDirectory.empty())
+	if (!boundAtLeastMainTextDomain)
 	{
 		debug(LOG_ERROR, "initI18n: bindtextdomain failed!");
 	}
 
-	(void)bind_textdomain_codeset(PACKAGE, "UTF-8");
+	// Set default text domain
 	(void)textdomain(PACKAGE);
 	debug(LOG_WZ, "textdomain: %s", PACKAGE);
 
 	// Should come *after* bindTextDomain
 	canUseLANGUAGEEnvVar = checkSupportsLANGUAGEenvVarOverride();
 
-	if (!setLanguage("")) // set to system default
+	if (!setLanguage(defaultLanguage.c_str())) // set to system default
 	{
 		// no system default?
 		debug(LOG_ERROR, "initI18n: No system language found");

@@ -36,6 +36,7 @@
 #include "console.h"
 #include "objmem.h"
 #include "droid.h"
+#include "hci.h"
 
 /**This represents the current selected player, which is the client's player.*/
 extern UDWORD selectedPlayer;
@@ -88,10 +89,14 @@ bool cmdDroidAddDroid(DROID *psCommander, DROID *psDroid)
 	ASSERT_OR_RETURN(false, psCommander != nullptr, "psCommander is null?");
 	ASSERT_OR_RETURN(false, psDroid != nullptr, "psDroid is null?");
 
+	auto initialDroidGroup = psDroid->group;
+	auto initialDroidRepairGroup = psDroid->repairGroup;
+
 	if (psCommander->psGroup == nullptr)
 	{
 		psGroup = grpCreate();
 		psGroup->add(psCommander);
+		psDroid->repairGroup = UBYTE_MAX;
 		psDroid->group = UBYTE_MAX;
 	}
 
@@ -100,6 +105,7 @@ bool cmdDroidAddDroid(DROID *psCommander, DROID *psDroid)
 		addedToGroup = true;
 
 		psCommander->psGroup->add(psDroid);
+		psDroid->repairGroup = UBYTE_MAX;
 		psDroid->group = UBYTE_MAX;
 
 		// set the secondary states for the unit
@@ -118,6 +124,18 @@ bool cmdDroidAddDroid(DROID *psCommander, DROID *psDroid)
 			addConsoleMessage(_("Commander needs a higher level to command more units"), DEFAULT_JUSTIFY,  SYSTEM_MESSAGE);
 			lastMaxCmdLimitMsgTime = gameTime;
 		}
+
+		if (initialDroidGroup != UBYTE_MAX)
+		{
+			psDroid->group = initialDroidGroup;
+			SelectGroupDroid(psDroid);
+		}
+		psDroid->repairGroup = initialDroidRepairGroup;
+	}
+
+	if (initialDroidGroup != psDroid->group)
+	{
+		intGroupsChanged();
 	}
 
 	return addedToGroup;
@@ -148,17 +166,16 @@ void cmdDroidClearDesignator(UDWORD player)
  * It does this by searching throughout all the player's droids.
  * @todo try to find something more efficient, has this function is of O(TotalNumberOfDroidsOfPlayer).
  */
-SDWORD cmdDroidGetIndex(DROID *psCommander)
+SDWORD cmdDroidGetIndex(const DROID *psCommander)
 {
 	SDWORD	index = 1;
-	DROID	*psCurr;
 
 	if (psCommander->droidType != DROID_COMMAND)
 	{
 		return 0;
 	}
 
-	for (psCurr = apsDroidLists[psCommander->player]; psCurr; psCurr = psCurr->psNext)
+	for (const DROID* psCurr : apsDroidLists[psCommander->player])
 	{
 		if (psCurr->droidType == DROID_COMMAND &&
 		    psCurr->id < psCommander->id)
@@ -173,7 +190,7 @@ SDWORD cmdDroidGetIndex(DROID *psCommander)
 /** This function returns the maximum group size of the command droid.*/
 unsigned int cmdDroidMaxGroup(const DROID *psCommander)
 {
-	const BRAIN_STATS *psStats = getBrainStats(psCommander);
+	const BRAIN_STATS *psStats = psCommander->getBrainStats();
 	return getDroidLevel(psCommander) * psStats->upgrade[psCommander->player].maxDroidsMult + psStats->upgrade[psCommander->player].maxDroids;
 }
 
@@ -182,10 +199,10 @@ void cmdDroidUpdateExperience(DROID *psShooter, uint32_t experienceInc)
 {
 	ASSERT_OR_RETURN(, psShooter != nullptr, "invalid Unit pointer");
 
-	if (hasCommander(psShooter))
+	if (hasCommander(psShooter) && droidWithinCommanderRange(psShooter))
 	{
 		DROID *psCommander = psShooter->psGroup->psCommander;
-		psCommander->experience += MIN(experienceInc, UINT32_MAX - psCommander->experience);
+		droidIncreaseExperience(psCommander, MIN(experienceInc, UINT32_MAX - psCommander->experience));
 	}
 }
 

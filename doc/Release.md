@@ -44,10 +44,11 @@ Wait for all CI builds to complete, and verify they have completed successfully.
 > To find the latest status, click on each image, or **view the Checks / Status for the commit on GitHub**.
 
 [![Ubuntu](https://github.com/Warzone2100/warzone2100/workflows/Ubuntu/badge.svg?branch=master&event=push)](https://github.com/Warzone2100/warzone2100/actions?query=workflow%3AUbuntu+branch%3Amaster+event%3Apush)
-[![Fedora](https://github.com/Warzone2100/warzone2100/workflows/Fedora/badge.svg?branch=master&event=push)](https://github.com/Warzone2100/warzone2100/actions?query=workflow%3AFedora+branch%3Amaster+event%3Apush)
+[![Snapcraft](https://github.com/Warzone2100/warzone2100/workflows/Snapcraft/badge.svg?branch=master&event=push)](https://github.com/Warzone2100/warzone2100/actions?query=workflow%3ASnapcraft+branch%3Amaster+event%3Apush)
+[![Flatpak](https://github.com/Warzone2100/warzone2100/workflows/Flatpak/badge.svg?branch=master&event=push)](https://github.com/Warzone2100/warzone2100/actions?query=workflow%3AFlatpak+branch%3Amaster+event%3Apush)
 [![Windows](https://github.com/Warzone2100/warzone2100/workflows/Windows/badge.svg?branch=master&event=push)](https://github.com/Warzone2100/warzone2100/actions?query=workflow%3AWindows+branch%3Amaster+event%3Apush)
 [![macOS](https://github.com/Warzone2100/warzone2100/workflows/macOS/badge.svg?branch=master&event=push)](https://github.com/Warzone2100/warzone2100/actions?query=workflow%3AmacOS+branch%3Amaster+event%3Apush)
-[![Drone Cloud CI ARM64 Build Status](https://img.shields.io/drone/build/Warzone2100/warzone2100/master?label=ARM64%20Linux)](https://cloud.drone.io/Warzone2100/warzone2100)
+[![Emscripten](https://github.com/Warzone2100/warzone2100/actions/workflows/CI_emscripten.yml/badge.svg?branch=master&event=push)](https://github.com/Warzone2100/warzone2100/actions?query=workflow%3AEmscripten+branch%3Amaster+event%3Apush)
 
 Can be flakey:
 - FreeBSD builds: [![FreeBSD Build Status](https://api.cirrus-ci.com/github/Warzone2100/warzone2100.svg?branch=master)](https://cirrus-ci.com/github/Warzone2100/warzone2100)
@@ -58,9 +59,9 @@ Testing
 You should locally test whether the master branch of the game actually runs, in both single & skirmish and multiplayer.
 The latest CI (master branch) builds may be downloaded from:
 * [Windows Builds](https://github.com/Warzone2100/warzone2100/actions?query=workflow%3AWindows+branch%3Amaster+event%3Apush)
-   * Select the latest "Windows" workflow run, download the `warzone2100_win_*_portable` and `warzone2100_win_*_installer` artifacts.
-   * (Note: These will be a .zip _of_ the .exe. Only the .exe gets automatically uploaded on release.)
-   * Test both the portable and regular installers!
+   * Select the latest "Windows" workflow run, download the `warzone2100_win_installer` artifact.
+   * (Note: This will be a .zip _of_ the .exe. Only the .exe gets automatically uploaded on release.)
+   * Test the installer!
 * [macOS Build](https://github.com/Warzone2100/warzone2100/actions?query=workflow%3AmacOS+branch%3Amaster+event%3Apush)
    * Select the latest "macOS" workflow run, download the `warzone2100_macOS_universal` and `warzone2100_macOS_universal_novideos` artifacts.
    * (Note: This may be a .zip _of_ a .zip. Only the inner .zip gets automatically uploaded on release.)
@@ -74,9 +75,20 @@ Use the Linux build instructions to build via the source tarball you downloaded 
 Verify that the build succeeds (and that no files are missing from the tarball).
 Then proceed with normal game testing.
 
-### Test the Windows portable & regular installers
+### Test the Windows regular installer
 
-Verify that each installer works, and the game runs. (Start by testing the portable installer.)
+Verify that the installer works, and the game runs.
+
+### Test the Web Edition dev builds
+
+Once the latest master branch build completes, the dev Web Edition build will be pushed to:
+
+https://play.wz2100.net/dev/
+
+Test Campaign and Skirmish modes in at least:
+- Google Chrome
+- Mozilla Firefox
+- Safari
 
 ### Test the crash handler
 
@@ -155,15 +167,10 @@ the CI -> GitHub integration breaks).
 - [x] Verify all release assets have been uploaded by CI to the draft GitHub Release.
 - [x] Download each release asset and verify:
    - [x] Download the Windows builds from the draft release:
-      - [x] `warzone2100_win_x86.DEBUGSYMBOLS.7z`
-      - [x] `warzone2100_win_x86_installer.exe`
-      - [x] `warzone2100_win_x86_portable.exe`
-      - [x] `warzone2100_win_x64.DEBUGSYMBOLS.7z`
-      - [x] `warzone2100_win_x64_installer.exe`
-      - [x] `warzone2100_win_x64_portable.exe`
-   - [x] Verify the SHA512 hashes towards the end of the most recent [`workflow_run` Windows workflow's](https://github.com/Warzone2100/warzone2100/actions?query=workflow%3AWindows+event%3Aworkflow_run) log match the files you downloaded.
+      - [x] `warzone2100_win_installer.exe`
+   - [x] Verify the SHA512 hash towards the end of the most recent [`workflow_run` Windows workflow's](https://github.com/Warzone2100/warzone2100/actions?query=workflow%3AWindows+event%3Aworkflow_run) log match the files you downloaded.
       - [x] **Make sure you are viewing the build for the _tag_ you just made**
-      - [x] Select the appropriate job (x86, x64, etc).
+      - [x] Select the appropriate job (Build Installer, Sign Release Installers, etc).
       - [x] Expand the "Compare Build Outputs" step, which outputs the SHA512 hashes at the bottom of its output.
    - [x] Download the macOS build from the draft release:
       - [x] `warzone2100_macOS.zip`
@@ -218,5 +225,3 @@ And, I am sure that people will spread the word about this new release at the fo
  * [Reddit](https://www.reddit.com/r/warzone2100)
  * [ModDb](https://www.moddb.com/games/warzone-2100)
  * [Softonic](https://warzone-2100.en.softonic.com/)
- * [Gamershell](http://www.gamershell.com/news)
- * [Gamedev](http://www.gamedev.net/community/forums/forum.asp?forum_id=6)

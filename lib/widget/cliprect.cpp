@@ -37,14 +37,20 @@ void ClipRectWidget::runRecursive(W_CONTEXT *psContext)
 	WIDGET::runRecursive(&newContext);
 }
 
-bool ClipRectWidget::processClickRecursive(W_CONTEXT *psContext, WIDGET_KEY key, bool wasPressed)
+std::shared_ptr<WIDGET> ClipRectWidget::findMouseTargetRecursive(W_CONTEXT *psContext, WIDGET_KEY key, bool wasPressed)
 {
 	W_CONTEXT newContext(psContext);
 	newContext.xOffset = psContext->xOffset - offset.x;
 	newContext.yOffset = psContext->yOffset - offset.y;
 	newContext.mx = psContext->mx + offset.x;
 	newContext.my = psContext->my + offset.y;
-	return WIDGET::processClickRecursive(&newContext, key, wasPressed);
+
+	auto result = WIDGET::findMouseTargetRecursive(&newContext, key, wasPressed);
+	if (result != nullptr)
+	{
+		*psContext = newContext; // bubble-up the matching hit's context
+	}
+	return result;
 }
 
 void ClipRectWidget::displayRecursive(const WidgetGraphicsContext &context)
@@ -67,14 +73,38 @@ void ClipRectWidget::displayRecursive(const WidgetGraphicsContext &context)
 	}
 }
 
-void ClipRectWidget::setTopOffset(uint16_t value)
+bool ClipRectWidget::isChildVisible(const std::shared_ptr<WIDGET>& child)
 {
-	offset.y = value;
+	ASSERT_OR_RETURN(false, child->parent() == shared_from_this(), "Not a child of this widget?");
+	WidgetGraphicsContext childrenContext = WidgetGraphicsContext()
+		.translatedBy(screenPosX(), screenPosY())
+		.clippedBy(WzRect(offset.x, offset.y, width(), height()));
+	return childrenContext.clipContains(child->geometry());
 }
 
-void ClipRectWidget::setLeftOffset(uint16_t value)
+bool ClipRectWidget::setTopOffset(uint16_t value)
 {
+	if (value == offset.y)
+	{
+		return false;
+	}
+	offset.y = value;
+	return true;
+}
+
+uint16_t ClipRectWidget::getTopOffset()
+{
+	return offset.y;
+}
+
+bool ClipRectWidget::setLeftOffset(uint16_t value)
+{
+	if (value == offset.x)
+	{
+		return false;
+	}
 	offset.x = value;
+	return true;
 }
 
 int ClipRectWidget::parentRelativeXOffset(int coord) const

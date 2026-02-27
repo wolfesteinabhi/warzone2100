@@ -1,16 +1,12 @@
-/*
-SUB_2_1 Script
-Authors: Cristian Odorico (Alpha93) / KJeff01
- */
 include("script/campaign/libcampaign.js");
 include("script/campaign/templates.js");
 include("script/campaign/transitionTech.js");
 
 var victoryFlag;
 
-const TRANSPORT_TEAM = 1;
-const COLLECTIVE_RES = [
-	"R-Defense-WallUpgrade06", "R-Struc-Materials06", "R-Sys-Engineering02",
+const MIS_TRANSPORT_TEAM_PLAYER = 1;
+const mis_collectiveRes = [
+	"R-Defense-WallUpgrade04", "R-Struc-Materials04", "R-Sys-Engineering02",
 	"R-Vehicle-Engine03", "R-Vehicle-Metals03", "R-Cyborg-Metals03",
 	"R-Wpn-Cannon-Accuracy02", "R-Wpn-Cannon-Damage04",
 	"R-Wpn-Cannon-ROF01", "R-Wpn-Flamer-Damage03", "R-Wpn-Flamer-ROF01",
@@ -20,23 +16,31 @@ const COLLECTIVE_RES = [
 	"R-Wpn-Rocket-ROF03", "R-Wpn-RocketSlow-Accuracy03",
 	"R-Wpn-RocketSlow-Damage04", "R-Sys-Sensor-Upgrade01"
 ];
+const mis_collectiveResClassic = [
+	"R-Defense-WallUpgrade03", "R-Struc-Materials03", "R-Vehicle-Engine04",
+	"R-Vehicle-Metals03", "R-Cyborg-Metals03", "R-Vehicle-Armor-Heat01",
+	"R-Cyborg-Armor-Heat01", "R-Wpn-Cannon-Accuracy02", "R-Wpn-Cannon-Damage04",
+	"R-Wpn-Cannon-ROF01", "R-Wpn-Flamer-Damage04", "R-Wpn-Flamer-ROF01",
+	"R-Wpn-MG-Damage04", "R-Wpn-MG-ROF02", "R-Sys-Sensor-Upgrade01",
+	"R-Wpn-Mortar-Damage03", "R-Wpn-Mortar-Damage04", "R-Wpn-RocketSlow-Accuracy03",
+	"R-Wpn-RocketSlow-Damage03", "R-Wpn-RocketSlow-ROF03"
+];
 
 //trigger event when droid reaches the downed transport.
 camAreaEvent("crashSite", function(droid)
 {
 	//Unlikely to happen.
-	if (!enumDroid(TRANSPORT_TEAM).length)
+	if (!enumDroid(MIS_TRANSPORT_TEAM_PLAYER).length)
 	{
 		gameOverMessage(false);
 		return;
 	}
 
-	const GOODSND = "pcv615.ogg";
-	playSound(GOODSND);
+	playSound(cam_sounds.rescue.unitsRescued);
 
 	hackRemoveMessage("C21_OBJECTIVE", PROX_MSG, CAM_HUMAN_PLAYER);
 
-	var droids = enumDroid(TRANSPORT_TEAM);
+	const droids = enumDroid(MIS_TRANSPORT_TEAM_PLAYER);
 	for (let i = 0; i < droids.length; ++i)
 	{
 		donateObject(droids[i], CAM_HUMAN_PLAYER);
@@ -47,11 +51,21 @@ camAreaEvent("crashSite", function(droid)
 	queue("triggerWin", camSecondsToMilliseconds(2));
 });
 
+function insaneReinforcementSpawn()
+{
+	const SCAN_DISTANCE = 2; // Skyscrapers are close to some edges.
+	const DISTANCE_FROM_POS = 25;
+	const units = [cTempl.commrl, cTempl.commrp, cTempl.npcybc];
+	const limits = {minimum: 2, maxRandom: 2};
+	const location = camGenerateRandomMapEdgeCoordinate(getObject("startingPosition"), CAM_GENERIC_LAND_STAT, DISTANCE_FROM_POS, SCAN_DISTANCE);
+	camSendGenericSpawn(CAM_REINFORCE_GROUND, CAM_THE_COLLECTIVE, CAM_REINFORCE_CONDITION_BASES, location, units, limits.minimum, limits.maxRandom);
+}
+
 //function that applies damage to units in the downed transport transport team.
 function preDamageUnits()
 {
 	setHealth(getObject("transporter"), 40);
-	var droids = enumDroid(TRANSPORT_TEAM);
+	const droids = enumDroid(MIS_TRANSPORT_TEAM_PLAYER);
 	for (let j = 0; j < droids.length; ++j)
 	{
 		setHealth(droids[j], 40 + camRand(20));
@@ -79,14 +93,14 @@ function setupCyborgGroups()
 
 function setCrashedTeamExp()
 {
-	const DROID_EXP = 32;
-	var droids = enumDroid(TRANSPORT_TEAM).filter((dr) => (
+	const DROID_EXP = camGetRankThreshold("professional");
+	const droids = enumDroid(MIS_TRANSPORT_TEAM_PLAYER).filter((dr) => (
 		!camIsSystemDroid(dr) && !camIsTransporter(dr)
 	));
 
 	for (let i = 0; i < droids.length; ++i)
 	{
-		var droid = droids[i];
+		const droid = droids[i];
 		setDroidExperience(droid, DROID_EXP);
 	}
 
@@ -103,71 +117,106 @@ function checkCrashedTeam()
 
 	if (camDef(victoryFlag) && victoryFlag)
 	{
+		if (camAllowInsaneSpawns())
+		{
+			if (!camAllEnemyBasesEliminated())
+			{
+				return;
+			}
+		}
+
 		return true;
 	}
 }
 
 function eventStartLevel()
 {
-	camSetExtraObjectiveMessage(_("Locate and rescue your units from the shot down transporter"));
+	const VIC_MSG = _("Locate and rescue your units from the shot down transporter");
+	const VIC_MSG_SPAWNS = _("Destroy all enemy bases");
+	const vicMessages = (!camAllowInsaneSpawns()) ? VIC_MSG : [VIC_MSG, VIC_MSG_SPAWNS];
+	camSetExtraObjectiveMessage(vicMessages);
 
-	camSetStandardWinLossConditions(CAM_VICTORY_OFFWORLD, "CAM_2B", {
+	camSetStandardWinLossConditions(CAM_VICTORY_OFFWORLD, cam_levels.beta3, {
 		area: "RTLZ",
 		message: "C21_LZ",
 		reinforcements: -1,
 		callback: "checkCrashedTeam"
 	});
 
-	var subLandingZone = getObject("landingZone");
-	var startpos = getObject("startingPosition");
-	var tent = getObject("transporterEntry");
-	var text = getObject("transporterExit");
-	centreView(startpos.x, startpos.y);
+	const subLandingZone = getObject("landingZone");
+	const startPos = getObject("startingPosition");
+	const tEnt = getObject("transporterEntry");
+	const tExt = getObject("transporterExit");
+	centreView(startPos.x, startPos.y);
 	setNoGoArea(subLandingZone.x, subLandingZone.y, subLandingZone.x2, subLandingZone.y2, CAM_HUMAN_PLAYER);
-	startTransporterEntry(tent.x, tent.y, CAM_HUMAN_PLAYER);
-	setTransporterExit(text.x, text.y, CAM_HUMAN_PLAYER);
-
-	var enemyLz = getObject("COLandingZone");
-	setNoGoArea(enemyLz.x, enemyLz.y, enemyLz.x2, enemyLz.y2, THE_COLLECTIVE);
+	startTransporterEntry(tEnt.x, tEnt.y, CAM_HUMAN_PLAYER);
+	setTransporterExit(tExt.x, tExt.y, CAM_HUMAN_PLAYER);
 
 	//Add crash site blip and from an alliance with the crashed team.
 	hackAddMessage("C21_OBJECTIVE", PROX_MSG, CAM_HUMAN_PLAYER, false);
-	setAlliance(CAM_HUMAN_PLAYER, TRANSPORT_TEAM, true);
+	setAlliance(CAM_HUMAN_PLAYER, MIS_TRANSPORT_TEAM_PLAYER, true);
+	setAlliance(MIS_TRANSPORT_TEAM_PLAYER, CAM_THE_COLLECTIVE, true);
 
 	//set downed transport team colour to be Project Green.
-	changePlayerColour(TRANSPORT_TEAM, 0);
+	changePlayerColour(MIS_TRANSPORT_TEAM_PLAYER, 0);
 
-	camCompleteRequiredResearch(COLLECTIVE_RES, THE_COLLECTIVE);
-	camCompleteRequiredResearch(ALPHA_RESEARCH_NEW, TRANSPORT_TEAM);
-	camCompleteRequiredResearch(PLAYER_RES_BETA, TRANSPORT_TEAM);
-
-	if (difficulty >= HARD)
+	if (camClassicMode())
 	{
-		camUpgradeOnMapTemplates(cTempl.commc, cTempl.commrp, THE_COLLECTIVE);
+		camClassicResearch(mis_collectiveResClassic, CAM_THE_COLLECTIVE);
+		camClassicResearch(mis_alphaResearchNewClassic, MIS_TRANSPORT_TEAM_PLAYER);
+		camClassicResearch(mis_playerResBetaClassic, MIS_TRANSPORT_TEAM_PLAYER);
+	}
+	else
+	{
+		camCompleteRequiredResearch(mis_collectiveRes, CAM_THE_COLLECTIVE);
+		camCompleteRequiredResearch(mis_alphaResearchNew, MIS_TRANSPORT_TEAM_PLAYER);
+		camCompleteRequiredResearch(mis_playerResBeta, MIS_TRANSPORT_TEAM_PLAYER);
+
+		if (difficulty >= HARD)
+		{
+			camUpgradeOnMapTemplates(cTempl.commc, cTempl.commrp, CAM_THE_COLLECTIVE);
+		}
+	}
+
+	if (camAllowInsaneSpawns())
+	{
+		addDroid(CAM_THE_COLLECTIVE, 35,22, "MRP Panther Tracks", tBody.tank.panther, tProp.tank.tracks, "", "", tWeap.tank.miniRocketPod);
+		addDroid(CAM_THE_COLLECTIVE, 35,23, "MRP Panther Tracks", tBody.tank.panther, tProp.tank.tracks, "", "", tWeap.tank.miniRocketPod);
+		addDroid(CAM_THE_COLLECTIVE, 35,24, "Heavy Cannon Tiger Tracks", tBody.tank.tiger, tProp.tank.tracks, "", "", tWeap.tank.heavyCannon);
+		addDroid(CAM_THE_COLLECTIVE, 35,25, "Heavy Cannon Tiger Tracks", tBody.tank.tiger, tProp.tank.tracks, "", "", tWeap.tank.heavyCannon);
+		addDroid(CAM_THE_COLLECTIVE, 35,26, "Heavy Cannon Tiger Tracks", tBody.tank.tiger, tProp.tank.tracks, "", "", tWeap.tank.heavyCannon);
+		addDroid(CAM_THE_COLLECTIVE, 36,26, "Heavy Cannon Tiger Tracks", tBody.tank.tiger, tProp.tank.tracks, "", "", tWeap.tank.heavyCannon);
+		addDroid(CAM_THE_COLLECTIVE, 37,26, "Heavy Cannon Tiger Tracks", tBody.tank.tiger, tProp.tank.tracks, "", "", tWeap.tank.heavyCannon);
+		addDroid(CAM_THE_COLLECTIVE, 38,26, "MRP Panther Tracks", tBody.tank.panther, tProp.tank.tracks, "", "", tWeap.tank.miniRocketPod);
+		addDroid(CAM_THE_COLLECTIVE, 39,26, "MRP Panther Tracks", tBody.tank.panther, tProp.tank.tracks, "", "", tWeap.tank.miniRocketPod);
 	}
 
 	camSetEnemyBases({
 		"COHardpointBase": {
 			cleanup: "hardpointBaseCleanup",
 			detectMsg: "C21_BASE1",
-			detectSnd: "pcv379.ogg",
-			eliminateSnd: "pcv394.ogg",
+			detectSnd: cam_sounds.baseDetection.enemyBaseDetected,
+			eliminateSnd: cam_sounds.baseElimination.enemyBaseEradicated,
 		},
 		"COBombardBase": {
 			cleanup: "bombardBaseCleanup",
 			detectMsg: "C21_BASE2",
-			detectSnd: "pcv379.ogg",
-			eliminateSnd: "pcv394.ogg",
+			detectSnd: cam_sounds.baseDetection.enemyBaseDetected,
+			eliminateSnd: cam_sounds.baseElimination.enemyBaseEradicated,
 		},
 		"COBunkerBase": {
 			cleanup: "bunkerBaseCleanup",
 			detectMsg: "C21_BASE3",
-			detectSnd: "pcv379.ogg",
-			eliminateSnd: "pcv394.ogg",
+			detectSnd: cam_sounds.baseDetection.enemyBaseDetected,
+			eliminateSnd: cam_sounds.baseElimination.enemyBaseEradicated,
 		},
 	});
 
 	setCrashedTeamExp();
 	victoryFlag = false;
 	queue("setupCyborgGroups", camSecondsToMilliseconds(5));
+	if (camAllowInsaneSpawns())
+	{
+		setTimer("insaneReinforcementSpawn", camMinutesToMilliseconds(3));
+	}
 }

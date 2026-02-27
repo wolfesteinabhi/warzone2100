@@ -30,6 +30,10 @@
 #include "input/keyconfig.h"
 #include <glm/fwd.hpp>
 
+#include <nonstd/optional.hpp>
+using nonstd::optional;
+using nonstd::nullopt;
+
 /* Initialise the display system */
 bool dispInitialise();
 
@@ -54,22 +58,29 @@ void clearSelection();
 // deal with selecting a droid
 void dealWithDroidSelect(DROID *psDroid, bool bDragBox);
 
-bool isMouseOverRadar();
-
 void	setInvertMouseStatus(bool val);
 bool	getInvertMouseStatus();
 
 void	setRightClickOrders(bool val);
 bool	getRightClickOrders();
 
-void	setMiddleClickRotate(bool val);
-bool	getMiddleClickRotate();
+optional<MOUSE_KEY_CODE> getRotateMouseKey();
+bool setRotateMouseKey(optional<MOUSE_KEY_CODE> key);
+
+optional<MOUSE_KEY_CODE> getPanMouseKey();
+bool setPanMouseKey(optional<MOUSE_KEY_CODE> key);
 
 void	setDrawShadows(bool val);
 bool	getDrawShadows();
 
+void	setDrawTerrainShadows(bool val);
+bool	getDrawTerrainShadows();
+
 bool	getCameraAccel();
 void	setCameraAccel(bool val);
+
+void	setEdgeScrollOutsideWindowBounds(bool val);
+bool	getEdgeScrollOutsideWindowBounds();
 
 /* Do the 3D display */
 void displayWorld();
@@ -184,7 +195,8 @@ extern void shakeStop();
 // reset the input state
 void resetInput();
 
-bool CheckInScrollLimits(SDWORD *xPos, SDWORD *zPos);
+bool CheckInScrollLimits(const int &xPos, const int &yPos);
+bool CheckInScrollLimitsCamera(SDWORD *xPos, SDWORD *zPos);
 bool CheckScrollLimits();
 
 BASE_OBJECT	*mouseTarget();
@@ -199,7 +211,7 @@ bool deliveryReposFinished(FLAG_POSITION *psFlag = nullptr);
 bool	getRotActive();
 
 #define MAX_PLAYER_X_ANGLE	(-1)
-#define MIN_PLAYER_X_ANGLE	(-89) // -90 breaks some things on Vulkan...
+#define MIN_PLAYER_X_ANGLE	(-88) // -90 breaks some things on Vulkan...
 
 #define MAXDISTANCE_REPLAY	(7000)
 #define MAXDISTANCE	(5000)

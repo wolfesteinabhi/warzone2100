@@ -39,7 +39,7 @@
 
 extern MISSION		mission;
 extern bool			offWorldKeepLists;
-extern DROID       *apsLimboDroids[MAX_PLAYERS];
+extern PerPlayerDroidLists apsLimboDroids;
 
 extern bool Cheated;
 
@@ -53,7 +53,8 @@ void releaseMission();
 /** On the PC - sets the countdown played flag. */
 void setMissionCountDown();
 
-bool startMission(LEVEL_TYPE missionType, char *pGame);
+struct GameLoadDetails;
+bool startMission(LEVEL_TYPE missionType, const GameLoadDetails& gameDetails);
 void endMission();
 
 /** Initialise the mission stuff for a save game. */
@@ -101,7 +102,7 @@ void intRemoveMissionResultNoAnim();
 void intProcessMissionResult(UDWORD id);
 void intRunMissionResult();
 
-void unloadTransporter(DROID *psTransporter, UDWORD x, UDWORD y, bool goingHome);
+void unloadTransporter(DROID *psTransporter, UDWORD x, UDWORD y);
 
 /** Sets the appropriate pause states for when the interface is up but the game needs to be paused. */
 void setMissionPauseState();
@@ -182,22 +183,6 @@ void clearMissionWidgets();
 
 /** Resets if return to game after an ESC. */
 void resetMissionWidgets();
-
-UDWORD	getCampaignNumber();
-void	setCampaignNumber(UDWORD number);
-
-std::string getCampaignName();
-
-struct CAMPAIGN_FILE
-{
-	WzString name;
-	WzString level;
-	WzString video;
-	WzString captions;
-	WzString package;
-	WzString loading;
-};
-std::vector<CAMPAIGN_FILE> readCampaignFiles();
 
 bool intAddMissionResult(bool result, bool bPlaySuccess, bool showBackDrop);
 

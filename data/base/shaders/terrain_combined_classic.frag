@@ -13,7 +13,12 @@
 
 // constants overridden by WZ when loading shaders (do not modify here in the shader source!)
 #define WZ_MIP_LOAD_BIAS 0.f
+#define WZ_SHADOW_MODE 1
+#define WZ_SHADOW_FILTER_SIZE 3
+#define WZ_SHADOW_CASCADES_COUNT 3
 //
+
+#define WZ_MAX_SHADOW_CASCADES 3
 
 #if (!defined(GL_ES) && (__VERSION__ >= 130)) || (defined(GL_ES) && (__VERSION__ >= 300))
 #define NEWGL
@@ -39,11 +44,21 @@ uniform sampler2DArray decalNormal;
 uniform sampler2DArray decalSpecular;
 uniform sampler2DArray decalHeight;
 
+// shadow map
+uniform sampler2DArrayShadow shadowMap;
+
+uniform mat4 ViewMatrix;
+uniform mat4 ShadowMapMVPMatrix[WZ_MAX_SHADOW_CASCADES];
+uniform vec4 ShadowMapCascadeSplits;
+uniform int ShadowMapSize;
+
 // sun light colors/intensity:
 uniform vec4 emissiveLight;
 uniform vec4 ambientLight;
 uniform vec4 diffuseLight;
 uniform vec4 specularLight;
+
+uniform vec4 sunPos; // in modelSpace, normalized
 
 // fog
 uniform int fogEnabled; // whether fog is enabled
@@ -54,7 +69,6 @@ uniform vec4 fogColor;
 in vec2 uvLightmap;
 in vec2 uvDecal;
 in vec2 uvGround;
-in float vertexDistance;
 flat in int tile;
 flat in uvec4 fgrounds;
 in vec4 fgroundWeights;
@@ -62,12 +76,18 @@ in vec4 fgroundWeights;
 in vec3 groundLightDir;
 in vec3 groundHalfVec;
 in mat2 decal2groundMat2;
+// For Shadows
+in vec3 posModelSpace;
+in vec3 posViewSpace;
 
 #ifdef NEWGL
 out vec4 FragColor;
 #else
 // Uses gl_FragColor
 #endif
+
+#include "shadow_mapping.glsl"
+#include "light.glsl"
 
 vec3 blendAddEffectLighting(vec3 a, vec3 b) {
 	return min(a + b, vec3(1.0));
@@ -78,9 +98,11 @@ vec4 main_classic() {
 
 	vec3 L = normalize(groundLightDir);
 	vec3 N = vec3(0.f,0.f,1.f);
-	float lambertTerm = max(dot(N, L), 0.0); // diffuse lighting
+	float diffuseFactor = lambertTerm(N, L); // diffuse lighting
+	float visibility = getShadowVisibility(posModelSpace, posViewSpace, diffuseFactor, 0.001f);
+
 	vec4 lightmap_vec4 = texture(lightmap_tex, uvLightmap, 0.f);
-	vec4 light = (diffuseLight*0.75*lambertTerm + ambientLight*0.25) * lightmap_vec4.a; // ... * tile brightness / ambient occlusion (stored in lightmap.a);
+	vec4 light = (visibility*diffuseLight*0.75*diffuseFactor + ambientLight*0.25) * lightmap_vec4.a; // ... * tile brightness / ambient occlusion (stored in lightmap.a);
 	light.rgb = blendAddEffectLighting(light.rgb, (lightmap_vec4.rgb / 1.5f)); // additive color (from environmental point lights / effects)
 	light.a = 1.f;
 
@@ -94,11 +116,8 @@ void main()
 	if (fogEnabled > 0)
 	{
 		// Calculate linear fog
-		float fogFactor = (fogEnd - vertexDistance) / (fogEnd - fogStart);
-		fogFactor = clamp(fogFactor, 0.0, 1.0);
-
-		// Return fragment color
-		fragColor = mix(fragColor, vec4(fogColor.xyz, fragColor.w), fogFactor);
+		float fogFactor = (fogEnd - length(posViewSpace)) / (fogEnd - fogStart);
+		fragColor = mix(fragColor, vec4(fogColor.rgb, fragColor.a), clamp(fogFactor, 0.0, 1.0));
 	}
 
 	#ifdef NEWGL

@@ -13,16 +13,20 @@ data/base/texpages/page-25-sky-urban.png
 	- MIT, Various Authors, See: https://github.com/HowardHinnant/date/blob/master/include/date/date.h
 3rdparty/discord-rpc/*
 	- MIT, Copyright 2017 Discord, Inc.
+3rdparty/expected/*
+	- CC0 1.0 Universal, Written in 2017 by Sy Brand (tartanllama@gmail.com, @TartanLlama)
 3rdparty/json/*
 	- MIT, Copyright (c) 2013-2018 Niels Lohmann <http://nlohmann.me>
+3rdparty/LRUCache11/*
+	- ISC License, Copyright (c) 2012-22 SAURAV MOHAPATRA (https://github.com/mohaps/lrucache11)
 3rdparty/micro-ecc/*
 	- BSD, Copyright (c) 2014, Kenneth MacKay (https://github.com/kmackay/micro-ecc)
 3rdparty/sha/*
 	- BSD, Copyright (c) 1998-2010, Brian Gladman, Worcester, UK. (https://github.com/BrianGladman/sha)
-3rdparty/mINI/*
-	- MIT, Copyright (c) 2018 Danijel Durakovic (https://github.com/pulzed/mINI)
-3rdparty/miniupnp/*
-	- BSD, Copyright (c) 2005-2017, Thomas BERNARD (http://miniupnp.free.fr)
+3rdparty/inih/*
+	- BSD, Copyright (C) 2009-2020, Ben Hoyt (https://github.com/benhoyt/inih)
+3rdparty/libplum/*
+	- MPL 2.0, Copyright (c) 2020-2021, Paul-Louis Ageneau (https://github.com/paullouisageneau/libplum)
 3rdparty/optional-lite/*
 	- Boost Software License 1.0, Copyright (c) 2014-2018 Martin Moene (https://github.com/martinmoene/optional-lite)
 3rdparty/quickjs/*
@@ -50,8 +54,34 @@ data/base/components/prop/prhlwhl1.pie
 	- CC BY SA 3.0 - Copyright (c) 2008 <Mysteryem>
 data/fonts/NotoSansCJK-VF.otf.ttc
 	- OFL 1.1 - Copyright (c) 2014-2021 Adobe (https://github.com/googlefonts/noto-cjk)
+data/base/images/wz_original_campaign_banner.png
+	- CC BY SA 3.0	- Copyright (c) 2007-2008 "B. V. Edwards" <cathuria>
 data/base/images/flags/flag-*.png
 	- MIT License, Copyright (c) 2016 Bowtie AB (https://github.com/madebybowtie/FlagKit)
+data/base/images/frontend/image_cam_universe_stars.png
+data/base/images/frontend/image_check_circle.png
+data/base/images/frontend/image_question_circle.png
+data/base/images/frontend/image_info_circle.png
+data/base/images/frontend/image_check_square_fill.png
+data/base/images/frontend/image_check_square_empty.png
+data/base/images/frontend/image_arrow_reload.png
+data/base/images/frontend/image_arrow_undo.png
+data/base/images/frontend/image_sidebar_list.png
+data/base/images/frontend/image_caret_down_fill.png
+data/base/images/frontend/image_eye.png
+data/base/images/frontend/image_gear.png
+data/base/images/frontend/image_globe.png
+data/base/images/frontend/image_lock.png
+data/base/images/frontend/image_pencil_square.png
+data/base/images/frontend/image_person.png
+data/base/images/frontend/image_person_fill.png
+data/base/images/frontend/image_person_plus_fill.png
+data/base/images/frontend/image_profile_edit.png
+data/base/images/frontend/image_profile_template.png
+data/base/images/frontend/image_star_fill.png
+data/base/images/frontend/image_unlock.png
+data/base/images/intfac/image_sidebar_list.png
+	- MIT License - Copyright (c) 2019-2024 The Bootstrap Authors (https://github.com/twbs/icons/blob/main/LICENSE)
 data/base/images/intfac/image_volume_mute.png
 data/base/images/intfac/image_volume_up.png
 data/base/images/notifications/connect_wait.png
@@ -73,8 +103,6 @@ lib/exceptionhandler/3rdparty/StackWalker.*
 	- BSD 3-Clause License - Copyright (c) 2005 - 2017, Jochen Kalmbach (https://github.com/JochenKalmbach/StackWalker)
 lib/ivis_opengl/3rdparty/etcpak/*
 	- BSD 3-Clause License, Copyright (c) 2013-2021, Bartosz Taudul <wolf@nereid.pl> (https://github.com/wolfpld/etcpak)
-lib/ivis_opengl/3rdparty/LRUCache11.hpp
-	- ISC License, Copyright (c) 2012-22 SAURAV MOHAPATRA (https://github.com/mohaps/lrucache11)
 lib/ivis_opengl/3rdparty/ska_sort.hpp
 	- Boost Software License 1.0, Copyright Malte Skarupke 2016 (https://github.com/skarupke/ska_sort)
 lib/ivis_opengl/3rdparty/stb_image_resize.h
@@ -83,14 +111,12 @@ lib/ivis_opengl/3rdparty/vk_mem_alloc.h
 	- MIT License, Copyright (c) 2017-2020 Advanced Micro Devices, Inc. (https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator)
 lib/ivis_opengl/3rdparty/vkh_*.*
 	- MIT License, Copyright (c) 2019-2020 past-due (https://github.com/past-due/vulkan-helpers)
+lib/netplay/3rdparty/miniupnp/*
+	- BSD, Copyright (c) 2005-2024, Thomas BERNARD (https://github.com/miniupnp/miniupnp)
 lib/sound/3rdparty/opusfile/*
 	- BSD 3-Clause License, Copyright (c) 1994-2020 Xiph.Org Foundation and contributors (https://github.com/xiph/opusfile)
 src/3rdparty/gsl_finally.h
 	- MIT License, Copyright (c) 2015 Microsoft Corporation (https://github.com/microsoft/GSL)
-src/3rdparty/integer_sequence.hpp
-	- CC0, Written in 2017 by Simon Brand (@TartanLlama)
-src/3rdparty/physfs.hpp
-	- Zlib, Copyright (c) 2013 Kevin Howell and others, Copyright (c) 2018 Arthur Brainville (Ybalrid), Copyright (c) 2021 Warzone 2100 Project
 sentry-native
 	- MIT License, Copyright (c) 2019 Sentry (https://sentry.io) and individual contributors. (https://github.com/getsentry/sentry-native)
 ANGLE (libGLESv2, libEGL)

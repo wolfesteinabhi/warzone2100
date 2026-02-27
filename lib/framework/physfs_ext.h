@@ -36,10 +36,8 @@
 // Detect the version of PhysFS
 #if PHYSFS_VER_MAJOR > 2 || (PHYSFS_VER_MAJOR == 2 && PHYSFS_VER_MINOR >= 1)
 	#define WZ_PHYSFS_2_1_OR_GREATER
-#elif (PHYSFS_VER_MAJOR == 2 && PHYSFS_VER_MINOR == 0)
-	#define WZ_PHYSFS_2_0_OR_GREATER
 #else
-	#error WZ requires PhysFS 2.0+
+	#error WZ requires PhysFS 2.1+
 #endif
 
 // WZ PHYSFS wrappers to provide consistent naming (and functionality) on PhysFS 2.0 and 2.1+
@@ -154,7 +152,11 @@ static inline PHYSFS_ErrorCode _WZ_PHYSFS_setBuffer(PHYSFS_File *fileHandle, PHY
 #endif
 
 // enumFunc receives each enumerated file, and returns true to continue enumeration, or false to shortcut / stop enumeration
-bool WZ_PHYSFS_enumerateFiles(const char *dir, const std::function<bool (const char* file)>& enumFunc);
+bool WZ_PHYSFS_enumerateFiles(const char *dir, const std::function<bool (const char* file)>& enumFunc); // NOTE: This actually includes directories?
+
+// enumFunc receives each enumerated file, and returns true to continue enumeration, or false to shortcut / stop enumeration
+// only enumerates files, but if recurse is `true` it will recursively enumerate files in all subdirectories of dir as well
+bool WZ_PHYSFS_enumerateFilesEx(const std::string &dir, const std::function<bool (const char* file)>& enumFunc, bool recurse = false);
 
 // enumFunc receives each enumerated subfolder, and returns true to continue enumeration, or false to shortcut / stop enumeration
 bool WZ_PHYSFS_enumerateFolders(const std::string &dir, const std::function<bool (const char* folder)>& enumFunc);
@@ -223,11 +225,7 @@ static inline bool PHYSFS_readBEFloat(PHYSFS_file *file, float *val)
 	return (PHYSFS_readUBE32(file, readValue) != 0);
 }
 
-#ifdef WZ_CC_MINGW
-bool PHYSFS_printf(PHYSFS_file *file, const char *format, ...) WZ_DECL_FORMAT(__MINGW_PRINTF_FORMAT, 2, 3);
-#else
-bool PHYSFS_printf(PHYSFS_file *file, const char *format, ...) WZ_DECL_FORMAT(printf, 2, 3);
-#endif
+bool PHYSFS_printf(PHYSFS_file *file, const char *format, ...) WZ_DECL_FORMAT(WZ_PRINTF_FORMAT, 2, 3);
 
 /**
  * @brief      fgets() implemented using PHYSFS.

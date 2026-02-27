@@ -1,46 +1,879 @@
+2026-02-04: Version 4.6.3:
+ * General:
+   * Fix: Detect disconnected research categories (commit:23710dd093bcc75169279f601fe646b1d8914352, #4779)
+   * Fix: Video sequence skip time delay for powerful systems (commit:e5654b3a9b6a930ab4857d830996b50989bd9ba3, #4785)
+   * Fix: VTOLs floating motionless in mid-air after failed embark (commit:55d232be355175e9764b0dd234d0e2d26de8c127, #4785)
+   * Fix: Auto-embark transporter selection behavior in skirmish / mp (commit:f5e663f840f7f397f74d1e3f334132298675d7ff, #4785)
+   * Fix: Trigger screenSizeDidChange if already started in *TitleUI::start (commit:83329a612dd0aacac0dbd743cd04e8626abaf8d4, #4790)
+   * Fix: History console position and sizing when layout changes (commit:eba7eb08ee875bf776b62e26a3f0e5cb81f20eed, #4796)
+   * Fix: Various potential crashes / asserts (too many commits, #4719, #4777, #4782)
+ * Graphics:
+   * Add: Terrain Shadows graphics option, terrain can now cast actual shadows on itself and everything else (too many commits, #4743)
+   * Add: Numerous improvements for shadows, lighting, and fog (too many commits, #4743)
+   * Change: Remove old fallback terrain renderer (commit:3c31d5d9aab6fe70cab1af00bf1acc5fcff0d233, #4743)
+   * Fix: Vulkan: Default-disable additional problematic layers (commit:7b4c5549016183741d2b19591afa8c104213e5a2, #4714)
+   * Fix: Black borders when changing display scale while fullscreen on some platforms (commit:4715d7ae4f3a9beec69947493e8ec9bcb540b68b, #4777)
+ * Multiplayer:
+   * Add: locked.cheats option, to reject debug mode / cheat voting (commit:635b4f7d728ec1c047fb56935ca195f96ec8a406, #4790)
+   * Add: Right-clicking on a human player copies the player id to the clipboard (commit:97c43ef2c055668b1188ac879ebc915302cfe832, #4790)
+   * Change: Display the player id (b64) instead of the old player hash (commit:c06834c1694316e353e9024f5fa83501caed68cb, #4790)
+   * Fix: handlePlayerLeftInGame leftWhilePlayer value (commit:c55b41bc3a5921b442c29216daf8ad42868aa182, #4757)
+   * Fix: Auto-not-ready kick behavior (commit:bcb89fe13a57ab407fccd8a17319c288ce3cb525, #4790)
+   * Fix: Improve tmp bad IPs list with expiry (commit: 78be0596010eb0118a416607109ca351450ce9ae, #4790)
+   * Fix: Return immediately after startMultiplayerGame() in frontendMultiMessages (commit:4d1721cab9e18a114ae8276909ca38b76278b9ad, #4790)
+   * Fix: Skip additional graphics or display-related tasks in headless mode (too many commits, #4790)
+   * Fix: Reduce amount of host / system message spam when joining lobbies and while in a lobby (too many commits, #4790)
+   * Fix: Handle poll connection-related errors in PendingWritesManager (commit:e8cfe956dcb085fd88665dc786ff7a72482bf91c, #4790)
+   * Fix: Improve accuracy of multiStatsResearchPerformance accumulation (commit:19e3f29d6f9929ca0668e2cbbebc57c0d1ca7d7d, #4790)
+   * Fix: Various possible causes of rare desyncs (too many commits, #4790)
+ * Scripting:
+   * Add: Optional "quiet" param to includeJSON() (commit:8ca6d1ef105791b3a446fcbb8248e6f9a41bc004, #4750)
+   * Fix: Remove or change some defensive checks in skirmish bots (commit:656433b9d0a5dbe631239d235639b9ee60fad849, #4764)
+   * Fix: Handle circular references when converting JSValue to json (commit:777a9fb4759d68794f39b6f7317b9b6226aec4a9, #4769)
+ * AI:
+   * Change: Cobra AI: Improve cyborg style games (commit:d4b0391b3eaa9ba4428d22ec641a56b87648b8ce, #4764)
+   * Fix: Nexus AI: Send help chat messages to allies only (commit:ee0a1394f76510d9e243e1f6b926279bd0b880eb, #4786)
+ * Translations:
+   * Add: Serbian translation (commit:67e7d0cd6eab6815405281880429ec92b3a7111c, #4726)
+   * Change: Translation updates (too many commits, #4710, #4802)
+ * Other:
+   * Fix: Various Wformat warnings and correctness issues (too many commits, #4787)
+   * Fix: get-dependencies_linux.sh: Debian / Ubuntu version-handling (commit:c763d01bf83dcb1b5a9e7bd9e4ac77739cd049de, #4795)
+   * Fix: Various documentation cleanups (too many commits, #4729, #4784, #4800)
+
+2025-12-09: Version 4.6.2:
+ * General:
+   * Fix: Add transporter weapon validity check (commit:a085887b4e3093e695f24f40a666170820c494ca, #4617)
+   * Fix: Resolve assert when loading replay with in-memory map archive (commit:6be51879a4bc0182ffc19b045d1d4fbe064a6e11, #4619)
+   * Fix: Allow stats / mods to change cyborg movement sound (commit:6800ec64a58f92a8387d0b8d1656adcd956c6cf7, #4623)
+   * Fix: Correct and clarify some topics of the in-game guide (commit:ae6965a270a9763619687e13e6642d26fbd1d587, #4582)
+   * Fix: Various potential crashes / asserts (too many commits, #4597, #4657, #4658, #4659, #4687)
+ * Graphics:
+   * Fix: MP Transporter model fixes (commit:7fbf3f31097c74b15cdcd2f2bbccd0ec07c95394, commit:ff6df7712aee58e1030bc52b460eb7aa6358aa63, #4627)
+   * Fix: Remove validation layers in Vulkan device create info (commit:ac9bc67d6ad24c2663b15e6554d659e787e27da3, #4638)
+ * Campaign:
+   * Add: Update Reclamation and Fractured Kingdom addon campaigns (commit:c50d79adf14fd8a032eb2fafc1c5c80a83bf4b89, commit:bb1d84ac901682d4b8066be2c5ebd5fc3793a68b, #4634)
+   * Fix: Make toggle options in GUI easier to understand (commit:2fa575d5a7a8b608ce4e80cb8f93923de9f1b835, #4645)
+   * Fix: Tower Wars tweak for Classic Balance (commit:b3578e1abbcef259ef5639fe4b56bc184185bee5, #4679)
+ * Multiplayer:
+   * Add: locked.readybeforefull option, to prevent checking ready before all open player slots are full (commit:af81baa87bc49c5312170cbda8dafc5d42d091c4, #4691)
+   * Change: Let Insane difficulty AI bots start with gates (commit:8a61dbab079846fd6cc6ea59bc6ef142da8c1586, #4640)
+   * Fix: Refactor how player connection state is recorded and handled, resolve "kick loop" (commit:3703421fd2ed99cf98fc5f69c0881d18a0b2d616, #4588)
+   * Fix: Trigger lobby browser refresh when exiting game lobby (commit:ae697c460a40e9d097687c37cbd5802f96372e76, #4605)
+   * Fix: Improve state management when --startplayers is specified (commit:ae35595678dfb34c1570bdb92fb8acadedf2b7af, #4605)
+   * Fix: sendBeacon error when spectator host (commit:119585ec10af38c6207b0e60204471879a4b1875, #4620)
+   * Fix: Errors in the maps Valley and Concrete (commit:7e381ce319a092f3c69552381024d09bbd702ee7, commit:169eaa25c6c22474ec9c5ee0c5f602bff7d8e71f, #4636)
+   * Fix: Name conflict with MP scavenger body stats (commit:e539abc3e1ae4cd1d344d1fd39c6f4f29ad06768, #4673)
+   * Fix: Improve not-ready-kick messaging (commit:f094d72d129a36d7431fa353f4bb9d68a539f8e1, #4691)
+   * Fix: netplay: Schedule port mapping request callbacks under the mutex (commit:6ceb6ca5c891ea1244433a81f820c1f2aa63dc52, #4698)
+ * Scripting:
+   * Add: scriptName to playerData (commit:7b933b4093ce08ed65a3ddbe7c423aa06f380e05, #4647)
+   * Change: Add optional center param to fireWeaponAtLoc (commit:43954282e18b96f1f2ad5806911854d800f54963, #4686)
+   * Fix: Update quickjs-wz, improving performance and fixing bugs (too many commits, #4596, #4613, #4639, #4685, #4699)
+   * Fix: syncRandom() return type (commit:dc4ed949908f7331189b1eeba5821b372d8c7eb7, #4630)
+ * AI:
+   * Nexus:
+     * Improve game performance when multiple Nexus bots are used
+     * Fix help system accessing help data incorrectly
+     * Fix a countDroid() call doing nothing for when to skip production
+   * NullBot family:
+     * Fix Hover AI causing "ruleset warnings" over the Mini-Rocket Pod
+     * Fix missing parenthesis introduced back in 2016 in function buildVtols (due to a recent commit, and this going unnoticed, that change unintentionally broke NullBot defense building behaviors)
+     * Make sure VTOL pads are built in safe areas
+   * Cobra:
+     * Can use Particle Gun now
+     * Create chance() function to remove repeated random() < X calls
+     * Slightly refactor research tree into separate functions
+     * Update const style convention (similar to libcampaign) to distinguish local and global constants
+     * Go for Power research more if available in low oil
+     * Reduce or eliminate chance of trapping trucks in high oil maps as it was trying to defend base derricks
+     * Try building repair facilities near other repair facilities (works best on high oil maps)
+     * Add a Cannon VTOL personality (AV chat command)
+     * Bump repair thresholds to medium damage levels
+     * Improvements to high oil build orders
+     * Much better T2+ No Bases support in all map types
+     * Micro optimize low oil build order to build power modules before cyborg factories
+     * Try using research labs with modules first when selecting research
+     * Some small research path optimizations
+     * Force Cobra to research defense topics randomly since they don't take long these days
+     * Cobra defends bases and oils better with defenses (kinda turtle-AI like)
+     * Fix Cobra building base structures very far away sometimes, due to a cache call collision returning an oil truck's defense structure location
+     * Rocket personality now ignores MG past the early game, will go full rocket artillery instead to optimize research
+     * Make it prefer stronger bodies faster, more chance to build heavy ones
+     * Fix a very old bug on Advanced Bases Cockpit / Cockate where truck production would be delayed for a few minutes (This will also fix other such maps that give almost no base structures on these settings)
+   * BoneCrusher:
+     * Fix some out-of-bounds access errors causing asserts
+     * Huge performance improvements (eliminates stutters in many higher oil maps)
+     * Fix a broken if statement for adding oil hunters which wanted to call a function to check something oil related   
+ * Balance MP:
+   * Change: Partial revert: SuperTransport base HP 3000 -> 2200, due to interaction with PR #3252 (commit:78b304b56ed9564e5d369b2448be4ab07a60069b, #4704)
+   * Fix: Copy paste stat error for Particle Gun emplacement (commit:7ed4dabf07e42bc48bc6dcfba8d0f0089f20107f, #4580)
+   * Fix: Thermal typo under bbaatow in structure.json (commit:6e4d7e9484addc8f4e8394ff7351b9280a6a6120, #4697)
+ * Other:
+   * Add: Gentoo support to get-dependencies_linux.sh (commit:19a21960feb437810ba3e6626d6f3355ffa37056, #4584)
+   * Add: Debian / Raspberry Pi OS support to get-dependencies_linux.sh (commit:19ead363d027c6734e313837bb5488a6ec6b5a7c, #4591)
+   * Add: Reminder messages in tutorial (commit:e6355e51c415d070fdaef5dc22ea663f6539a37d, #4702)
+   * Change: Port backend from SDL2 to SDL3 (too many commits, #4661)
+   * Fix: GameNetworkingSockets absl symbol leaks with protobuf (commit:fd2ab132761d293eb909f4734bc9b4eec341fa8e, #4576)
+   * Fix: Create albums music folder in config (commit:62bcfc9585cd7db0227607374618e3055a1adca0, #4609)
+   * Fix: Replace uses of sprintf (commit:ebeaaa7958f35879eea7b57474eff0c89aa4fb03, #4607)
+   * Fix: CMake: Update FindZIP to find 7zz (commit:38102e314a79dc8f6b22aed863cc7e6abba7d715, #4621)
+   * Fix: Snap: Add workaround for amdgpu.ids issue (commit:251f7c74bb3ac6ea15cbe29148c50fe7163f4188, #4648)
+
+2025-09-16: Version 4.6.1:
+ * General:
+   * Fix: Add various buggy drivers to the Vulkan driver blocklist (too many commits, #4560, #4568)
+   * Fix: Rebuilding search paths and reloading local mods after leaving joined lobby or multiplayer game (commit:d2310199e980f5f3781ff19580c807818598909e, commit:f28a8d1a57b989f9964f2b16f56c9789438e6eb0, #4561)
+   * Fix: Call countUpdate at init, not unsynchronized at top of gameLoop (commit:d65dcad91268e71fb26555bfadbf24c61126c082, #4564)
+ * Campaign:
+   * Fix: Improve campaign coordinate generators (commit:345c26dd053088d474bd37b7d5d01b8c179a91b4, #4570)
+ * Multiplayer:
+   * Add: hostAutoLagKickAggressiveness config value (commit:f2efcd97a65bfc3abc06c41350ea1c159d6c99d8, #4556)
+   * Add: Share more host options with clients, so clients can display the state (commit:48f52846df42c9ca74f7fe03b743b04f9e823715, #4562)
+   * Fix: Apply commander distance check to getDroidEffectiveLevel, other tweaks to avoid exploits (too many commits, #4559)
+   * Fix: Improve not-ready check / kick / warning (too many commits, #4566)
+ * Networking:
+   * Fix: netplay: Use shared/weak_ptr for WzConnectionProvider, refactor shutdown handling (too many commits, #4563)
+ * Translations:
+   * Change: Translation updates (commit:ffe13ab5532b6997c785650167d7db273cf545bb, #4571)
+
+2025-09-08: Version 4.6.0:
+ * General:
+   * Change: Bump repair spread area from 6 to 10 tiles (commit:027134f560965fec3ff37656c10f5d7e6190da5a, #4547)
+   * Remove: Experimental commander-based shield implementation, leave stubs for future shield experiments (commit:b9c9dfbf4ed230e04106c25dcde3dc7cb4b8c8b1, #4537)
+   * Fix: Various unloadTransporter issues and edge cases (too many commits, #4548)
+ * Campaign:
+   * Fix: Prevent campaign Gauss Cannon friendly splash damage (commit:c0ff325fd155e6f38f6c1dba044d9aabf7f87f26, #4543)
+ * Multiplayer:
+   * Fix: quickchat: Add reset & index swap handling (commit:f75c92f2250eebca74e2ad986f22b7cec080bb6f, #4540)
+   * Fix: teamstrategy: Update the player names once revealed (commit:d2bedbbb06b995a3a98a965bffdbbbbab4c5b138, #4542)
+   * Fix: Prevent MP penetrating weapons causing friendly fire (commit:355c5119053108b7c422de643100f5e6b176e57a, #4543)
+ * Networking:
+   * Fix: gns: Guard read/write accesses to activeClients_ with a mutex (commit:256788c35e9140fb9ce182aef103db6662c926e4, #4549)
+ * Scripting:
+   * Add: isFlying JS field to Droid objects (commit:f349292509f38c1e9c697f9f06777fc71800e8b4, #3830)
+ * Translations:
+   * Change: Translation updates (commit:802ce2fa34049ad05510cc34d2373f20ccef4fd3, #4536)
+ * Other:
+   * Update generated docs (commit:c471247a3b3c28c4ce5056e58ba5b1f89c68fce3, #4541)
+
+2025-08-31: Version 4.6.0-beta4:
+ * Multiplayer:
+   * Fix: Map preview cleanup when returning to lobby browser (commit:281c08938ed521edfff72af20895705390237ba7, #4533)
+   * Fix: Lobby browser spectate button issues (commit:b8061a1072b43107a20e3c6f21cc31cd4f5d8212, #4533)
+
+2025-08-31: Version 4.6.0-beta3:
+ * General:
+   * Add: Add to brain.json: cmdExpRange, shieldRange to cap distance for when shields regenerate and rank to be given to Commanders (commit:903a57b93f45c65bd8b9a65798d8442b6535332e, #4493)
+   * Add: Add "Audio Cues" options section, toggle for "Group Reporting" audio cue (commit:688bdb8bd54f0c215195e23ec7d9235008f170b2, #4519)
+   * Change: Transporters caught fire when flying over fire; Disabled burning transporter in general as they are always flying (commit:58ca5fb835c360eee6c114ae02637824c0895afb, #4504)
+   * Fix: Cleanup Commander template limit code to allow multi-factory production; Don't hide Commander templates at limit; Hardcoded 5 Commander production limit removed as it conflicts with modern scripts (commit:7ffa8e9951e6f41bc5733ae0d486df3d88203c1b, #4506)
+   * Fix: Set gameInitialised to true in initSaveGameLoad() to fix autosaves not happening after the new autosave message PR was done (commit:1bc622f83872bd93f548adb24a2cd6c6c9fee504, #4513)
+   * Fix: Additional calls to droidRepairStopped() to prevent sticking healthbars until fully healed (commit:18421b3c56aaceb298d0d004a6656626a209f07a, #4518)
+ * Graphics:
+   * Add: [Vulkan] Ability to block bad drivers, up max requested version to 1.3, Update minimum VK_HEADER_VERSION to 290 (too many commits, #4502)
+   * Fix: [Vulkan] Handle getQueueFamiliesInfo failure (commit:8afe3df7c40540424ac5f9c423c2f753f6aaaac1, #4496)
+ * Multiplayer:
+   * Add: Search for the nearest transporter if the current one is already full during an attempted embark (commit:b9538249871c1521fce983069304ba9118cc26fa, commit:780ac3100c750df9845a369fd02eaab39a0e8ce2, #4422)
+   * Add: Blind lobby & netplay tweaks, New lobby game browser. New widgets, more filtering options, more room information, and increased responsiveness (too many commits, #4499)
+   * Fix: Additional map preview sanity checks (commit:2838c083f68a484c90611a46fd60ce2ef30fd8c8, #4497)
+ * AI:
+   * Fix: Fix typos in BoneCrusher (commit:fe1e616c15fe5b652e4d7c814af66c91c7bfcb91, #4444)
+ * Networking:
+   * Fix: Do not add GNS to joinLobbyGame connection list to prevent a long wait time (commit:0df36e7306342bc1d2a6a9d9a050181b6be4c3ff, #4479)
+   * Fix: autoLobbyNotReadyKickRoutine using the wrong value (commit:fe4f29674945b15247d433febb9150e8d22aebdf, #4485)
+   * Fix: Move NETshutdown() later in systemShutdown() (commit:e3901055bd0884c97789a8d51a5d5de146cc8b62, #4492)
+   * Fix: Prevent 12 year old rare desync from different compiler / standard library implementations of std::sort when an unlucky list of tiles were generated during factory droid placement (commit:9dc499a1edf3266a8a43c8ab4b617109ed993f4c, #4486)
+   * Fix: Only output playerLeft event when slot is still allocated (commit:7dec24fae60165ed7dac192fdff6ed2ce5b1413d, #4521)
+   * Fix: Kicked-related message was not blinded (commit:a2b0ded3b90abaa828d910e6583b66d07b97438c, #4521)
+   * Fix: Improve connectionString parsing, including for IPv6 addresses (commit:8e7fabf243967b26d3b96d2941a7d6826d502930, #4523)
+ * Balance MP:
+   * Change: brain.json: Adjust shield strength; Additional sanity checks (commit:2622f38fc8c94627f3da1075e51431c1b9794b6b, commit:5dec5ba6274fb785f08dd43092e15e67fc1e23d6, #4522)
+ * Other:
+   * Add: Add Music Document (commit:8c2572d94162dbebdddbeed815a46f0dbc8ea7e8, #4174)
+   * Change: Update angle vcpkg port, vcpkg baseline (too many commits, #4500)
+   * Fix: Fix segfault with dumpinfo.cpp trying to use a WZ_MUTEX (commit:4f551999640f519b723ce6384a4c4036ab84d0f1, #4482)
+   * Fix: Additional sanity checks (too many commits, #4514)
+   * Fix: Match the pre-#4281 behavior for flying unit factory production placement (while preserving the fixes for other units) (commit:c75f6bbcb6df331a72d788175eec21bf55c4cfbd, #4511)
+   * Fix: Increment structure count maximum for the new owner on donation (commit:9659b33c754a382f6cfe9826399b2125c356704e, #4517)
+
+2025-08-16: Version 4.6.0-beta2:
+ * General:
+   * Add: Improve research items tooltips with categories and time (too many commits, #4216)
+   * Add: Attempt to break infinitely circling units out of a movement loop after a set time (commit:a60772db154c813feefc30bdfe2bc714287f00ae, 4222)
+   * Add: Add new combined (universal) Windows installer (too many commits, #4302, #4305, #4345)
+   * Add: Added commander shields, available in MP stats so far (too many commits, #4335, #4361, #4372, #4353)
+   * Add: Various mouse edge scrolling fixes, and new "Automatic" Trap Cursor mode (too many commits, #4354)
+   * Add: Support multi-threaded fpath job processing (too many commits, #4365)
+   * Add: Replace & revamp options menus (too many commits, #4371)
+   * Change: Don't stop units if startingPosition is unreachable during RTB order (commit:44c74ab7417ad326c69621d8e58d18088efecbf9, #4285)
+   * Change: Improve performance around terrain initialization, speeding up load times and reducing memory (commit:e5d2721c9509d5980484edbf515d2177071c5782, #4439)
+   * Fix: Can't build if the droid is centered on the tile (commit:0506f44a8b06315ba4dcfcf48d3ff7be96ea22b4, #4141)
+   * Fix: Wall gate flickering when in construction state (commit:2638082843e114a4a2ef0739282b34fcbf9ef8e8, #4140)
+   * Fix: Added check for droid distance when working on structure (commit:0d580d2c68fe6ce5192fae2c03f33434c3d96d3f, #4148)
+   * Fix: aiUpdateStructure: Avoid (expensive) duplicate call to aiChooseTarget for weapon_slot 0 to vastly improve game performance (commit:8c612d0ad654b7c56cc31bc162b079c2bedc4d89, #4212)
+   * Fix: Fix targetAttackWeight() assigning high weights to targets that can't be hit behind terrain (commit:38662e526d2ca42ef6a15eb1b85318913cce0623, commit:79460cfc9a760803d76d313bdae36c891d7d9352, #4223, #4453)
+   * Fix: Various savegame / autosave fixes. Performance improvements and display a message when autosaving (too many commits, #4318)
+   * Fix: Refactor backend / window initialization, improve Vulkan error handling (too many commits, #4320)
+   * Fix: Units sometimes do not retreat (commit:d32b97a09e83fc18cc54c4b7c1c9cb2c78461849, commit:50e05105d93f8a0946282c5fc4024d885d7a65c5, #4367, #4413)
+   * Fix: Fix crashes related to DROID_GROUP ids and saveload (commit:44029d5670968c469dde85da03242db31966db2d, #4412)
+   * Fix: Make camera mouse pan depend on camera speed, not map size (commit:a72817f904b6d924f97626b05452f5218b8f79f1, commit:69c9fde1ee3bd7755543a8f4cfc289cdb0946b32, #4410, #4423)
+   * Fix: Loading challenge clears challenge name in next save (commit:23f3a30e831a3a6562d793bad709d8a374e9a9e0, #4428)
+   * Fix: Improve performance when selecting targets (commit:7fc9962a4135f188841b2e431e7a2ca16c13b94f, #4443)
+   * Fix: Prevent splash damage from giving exp when damaging friendly objects (commit:90a61c643dae9b73098bc1cd1d2d8f4130d710f0, #4463)
+ * Graphics:
+   * Add: Add Script Debugger options to Reload Object Models (too many commits, #4265)
+   * Add: Show dust cloud when building structures (commit:62c2d881f20f5c061154ac133bbd36a56d0e610b, #4279)
+   * Add: Added velocity gain to droid particles upon destruction (commit:3f9895b0d82aefcd9f5006680f6299577198e6b7, commit,28924447fc854d1c68d65277c0c96a6eb2896feb, #4270)
+   * Add: Better high-quality water (too many commits, #4336)
+   * Add: Blender PIE addon support added for PIE 4 features (too many commits, #4391)
+   * Add: OpenGL: Improve OOM detection and messaging, support for KHR_debug on OpenGL ES (too many commits, #4431)
+   * Add: Disable some problematic Vulkan layers (too many commits, #4432, #4434)
+   * Add: [SDL backend] Support resumable video init, handle crashes (too many commits, #4434)
+   * Change: Base plates on base structures don't rely on a hack to change with the tileset (too many commits, #4177)
+   * Change: Convert PIELIGHT from union to struct to remove undefined behavior (commit:e348f268246d1eaced8e93426a1a36bb6ea02f0e, #4439)
+   * Change: Improved memory allocation patterns for SHAPEs (commit:574f47b3e7c5eefbeb0e4efb0a4cae67f58d1f70, commit:e8c23721c1fb5d3cb48bbf2fe0f0ce05dbec5d5d, #4447)
+   * Fix: Shadow issues on Pylon, Crane, Big Cooling Tower, Cooling Tower, and Water Tower (too many commits, #4147)
+   * Fix: Script Debugger not showing all feature objects available in the game (commit:606a742fc9ae45760a2f5a48ef54f641cb3e0b29, #4267)
+   * Fix: Fix shadow issues on cabins and wrecks and generally fix the whole Wrecked Hover model (too many commits, #4273)
+   * Fix: Fixes & improvements to quick object clipping (too many commits, #4306)
+   * Fix: Python body connectors tweaked to reduce floating weapon appearance (commit:16f7c5799c76622a4c6b4043244141a9395c9308, #4311)
+   * Fix: Fix seams on Panther body (commit:9d1cac44b45f641406d10d2d4ec90c19b567cdb2, #4315)
+   * Fix: Shadow issues fixed on metal guard tower defenses and sensor tower (commit:adf38292d83ab1c5a39db3a55da461120d79bb0d, commit:a8316ec01b99aff04af3c8a986e5b19959116e0c, #4369)
+   * Fix: Hyper Velocity Cannon mount had seam issues (commit:da13eb6ee287bf254545a75d0d753bf0bc329ad5, #4373)
+ * Campaign:
+   * Add: Update Fractured Kingdom to v1.4 release (commit:a4f0e481171f24051a222daf1328d3fcab7cea2e, #4259)
+   * Add: Port various guide topics from Fractured Kingdom into the base campaign (commit:f611a2a49ea56f3720220ea36362ea107bfecf89, commit:6b6a041ce3f3d0026a3ca79f06b544a7ae7350f6, #4350)
+   * Add: Bump Remastered to v1.2.7 -> v1.2.12 release with general campaign changes and fixes listed below (too many commits, #4258)
+   * Add: Adds Insane+ tweak option, fully realizing Insane with additional spawns and behavior on most missions. Will likely change a lot over time (commit:5f43426e5210742407a8878e98059f977bea2b01, commit:847d0e761c86a19015c7be39e60630967a596223, #4258)
+   * Add: Give ACs some basic splash damage (commit:5f43426e5210742407a8878e98059f977bea2b01, #4258)
+   * Add: Specify missing research names so research appears in the Stats objects (commit:5f43426e5210742407a8878e98059f977bea2b01, #4258)
+   * Add: Add Infinite Time tweak (commit:7681dfa0febf400a0b2082cb5f75ff6460d40f1f, #4258)
+   * Add: Add tweak to toggle victory condition reminder (commit:0892665f1168ce5fba32271f04ac453a02d485cb, #4258)
+   * Add: Add tweak for Gamma End bonus content, can play it in Classic now (commit:32691fd8f4fc449f71e6e7ecf6672b6dfc0284f3, #4258)
+   * Add: Add tweak to toggle between Insane and Insane+ (commit:847d0e761c86a19015c7be39e60630967a596223, #4258)
+   * Add: Add tweak to toggle Insane+ behavior on lower difficulties (commit:80c51fa9d4952821f0068a3be24f7d1781933a7f, #4258)
+   * Add: Add new Gamma tower defense mission tweak option (commit:db8c5979ea65b2c81934d1d05c381031ddfb6adb, #4258)
+   * Add: Add tweak to increase EXP gain (commit:aac3ffb4f8ad688c5bfe5f8c276bb94d1b48249c, #4258)
+   * Add: Add tweak to make your structures stronger for those that like to turtle (commit:505e382b11c4e7d8bf61436770b3768795b08cff, #4258)
+   * Add: Add Wreck objects to Fastplay, Alpha 3, and Alpha 4 to give these models some use (commit:c2d6a3a2476d865a5ee7df7debd090211c6ef653, commit:b1a4948bc7b8f25103b3a179b08b4ce5b4000c76, #4258)
+   * Add: Add Wrecked Hover features to the Alpha 12 map to make use of this model (commit:45289878c3c9a7f5906bbc4832ccceb53ca2a35c, #4258)
+   * Add: Add "Defending Your Base" guide topic (commit:a92bea6ca281432a31319ff2bef61a758df5b121, #4416)
+   * Change: libcampaign: The VTOL spawn system can make use of reinforcement conditions now (commit:5f43426e5210742407a8878e98059f977bea2b01, #4258)
+   * Change: libcampaign: Unify VTOL retreat and disappearing code into one new set of conditions and rules inside camVtolCanDisappear() (commit:5f43426e5210742407a8878e98059f977bea2b01, #4258)
+   * Change: libcampaign: Increase default factory group defense radius from 5 to 6 tiles (commit:5f43426e5210742407a8878e98059f977bea2b01, #4258)
+   * Change: Move first Alpha alloy into Alpha 5 (commit:5f43426e5210742407a8878e98059f977bea2b01, #4258)
+   * Change: Make Tank Trap research cheaper compared to Flamer/MG tower (commit:5f43426e5210742407a8878e98059f977bea2b01, #4258)
+   * Change: Reduce Bombard research time to make waiting not so long after beating Alpha 8 (commit:5f43426e5210742407a8878e98059f977bea2b01, #4258)
+   * Change: Make Pepperpot do more splash damage than Mortar (commit:5f43426e5210742407a8878e98059f977bea2b01, #4258)
+   * Change: Make Whirlwind do more splash damage than Hurricane (commit:5f43426e5210742407a8878e98059f977bea2b01, #4258)
+   * Change: Reduce price/time of Gamma cyborg research (commit:5f43426e5210742407a8878e98059f977bea2b01, #4258)
+   * Change: Half research time for Repair Turret to reduce wait time on Alpha 1 (commit:5f43426e5210742407a8878e98059f977bea2b01, #4258)
+   * Change: Bump Pepperpot to 60 splash damage, leaving it perfectly in-between Mortar and Bombard (commit:5f43426e5210742407a8878e98059f977bea2b01, #4258)
+   * Change: Experiment with increased spinAngle on Tracks to make them feel better by packing more units closer together and making pathing better (commit:d6d24a4ee6200e6e16b47e0e8cdddf8d277bc472, #4258)
+   * Change: Change Alpha 8 behavior to allow better sneak potential before the second LZ (commit:c4655a0201c59a2c6bbc13132b65bbd4e42714e3, #4258)
+   * Change: Make VTOL HC, MGs, Lasers, and Rails have better damage output; Fix Vindicator weight being too high (commit:9671a434b52607d5b2b0cc7439d27e4d5be1e6d4, #4416)
+   * Fix: libcampaign: CAM_REINFORCE_NONE was defined but unused, so make use of it (commit:5f43426e5210742407a8878e98059f977bea2b01, #4258)
+   * Fix: libcampaign: Transporters won't get added to groups via camMakeGroup() (commit:5f43426e5210742407a8878e98059f977bea2b01, #4258)
+   * Fix: libcampaign: camGenerateRandomMapEdgeCoordinate() and camGenerateRandomMapCoordinate() were improved, adds Hover propulsion support (commit:5f43426e5210742407a8878e98059f977bea2b01, #4258)
+   * Fix: Prevent Gamma 3 Project ally stealing your oils. libcampaign: camManageTruck() toggles if an AI player can go after oils (commit:5f43426e5210742407a8878e98059f977bea2b01, #4258)
+   * Fix: Upgrade obsolete units on-map to appropriate ones (commit:5f43426e5210742407a8878e98059f977bea2b01, #4258)
+   * Fix: libcampaign: Release partial factory groups when their factory gets destroyed (commit:5f43426e5210742407a8878e98059f977bea2b01, #4258)
+   * Fix: Make a factory produce Tank Killer units on Beta 9 rather than Lancers (commit:5f43426e5210742407a8878e98059f977bea2b01, #4258)
+   * Fix: libcampaign: Transporter bases now can use an object `posLZ` to specify coordinates for where to land the transporter (not just computing the exact middle of the base) (commit:5f43426e5210742407a8878e98059f977bea2b01, #4258)
+   * Fix: Anti-Cheese the lassat on Gamma 7 and 8. Spamming low rank or cheap units or even walls/tank-traps won't distract it, and trucks will automatically explode when going inside the Lassat targeting zone (commit:5f43426e5210742407a8878e98059f977bea2b01, #4258)
+   * Fix: libcampaign: Fix losing after winning when timing a victory precisely at the end of the mission timer on offworld missions (commit:faaef12c9bd53d8c00dc87b66032f914db2eaae1, #4258)
+   * Fix: Fix patrol position of the cyborgs defending the Alpha 12 base so they won't get trapped behind the hover factory at times (commit:e8da2231617d720a0279711d6350d952c260bc11, #4258)
+   * Fix: Fix the Gamma 9 East Hover patrol position to prevent bottlenecks with units amassing (commit:d9ccd1ed6c2f2719e6b288f24ea3a2f21a232e57, #4258)
+   * Fix: Fix VTOL Rail Gun not shooting air units (commit:effedf90f8683711ea65d4c232bcb8158265561e, #4258)
+   * Fix: Restore final Alpha MRP/MRA damage upgrade on Alpha 11 since 4.5.0-beta1; Make editing the artifact here easier so this never occurs again (commit:05ff1d31275bd1e71b61322b6d6d1a287d6808ae, #4452)
+ * Multiplayer:
+   * Add: Initial blind lobby / game support (too many commits, #4175)
+   * Add: Skirmish / MP Match Options UI revamp (Advanced Hosting Options, Match Option Preferences, etc) (too many commits, #4291)
+   * Add: Add host override to wzcmd event (commit:75dc0e6b917f82fa2cc53e07b9ab851796a7e50f, #4230)
+   * Add: Minimum replay file format support (too many commits, #4455)
+   * Change: Deprecate current rating lookup, remove user-visible option (commit:41c9bfd54e59acd6215eb06245b8cde53fc4780d, #4408)
+   * Fix: Various updates to wzmaplib, map-mods now unsupported (too many commits, #4183, #4184, #4185, #4244, #4193, #4338)
+   * Fix: Fix boundary check in script generated maps (commit:a7e3e06862dfb914b28a3fd2bb7cc8d0a269549b, #4156)
+   * Fix: Form with replay buttons overlaps with options button (commit:84f8141dec5c841b1e53f47244c73474ba20803f, commit:26af8b772faea61412a7ea168514a0cec7888922, #4144)
+   * Fix: Fix premature game loss with mp end conditions (commit:5be1b062d6b6842e71501a0c3ddd407d0442af10, #4266)
+   * Fix: Support for kick_redirect and redirect identity command, Deny player name changes when host-muted (too many commits, #4332)
+   * Fix: Tighten template design validity checks to prevent someone creating tanks with VTOL weapons, production also prevented (commit:52679bfffdfdbb6769f4c76c7227832b2fed2e81, #4352)
+   * Remove: Autorating removal (commit:6438d020c51a11c72703d653f4bb8227eb943aec, #4457)
+ * Scripting:
+   * Add: Migrate over to quickjs-ng (commit:530f32f35c89ffbce33421c62c7cc66688c15eb5, #4194)
+   * Add: New API function structureCanFit() (commit:f5693c8aadbca9ab52babcffa70fa170809e6181, #4405)
+   * Change: Center beacon blip (commit:2f7bfd38df78f6fb17bcf2b340114d652073609c, #4168)
+   * Change: Make fireWeaponAtLoc() hit immediately (commit:2c59a84dfdcdc6a4797b0bbb700ad343a1a77009, #4420)
+   * Change: Fix and alter how the script debugger changes players (commit:ec498e6e4ad7e2ad98c5d03045e83978935bcdc7, #4445)
+   * Fix: Fixes to ensure JS_FreeValue() is properly called (commit:b87aea945efb71aed996a1129b95369fcbbabfe6, #4190)
+   * Fix: Fix firing of triggerEventPlayerLeft causing a desync (commit:bf838214909bbc2eed429326fc3b7585b9c37ab3, #4333)
+   * Fix: Remove the g_pProjLastAttacker global used for eventAttacked to prevent a potential dangling pointer (commit:5a60f05cf4d7ad67d7dd99f3f16c646fe7c04a38, #4462)
+ * AI:
+   * Add: Add default AI main menu option in Multiplayer Options in the main menu (commit:9faab21054d09e4e664203e0f69818fb7387f24d, #4221)
+   * Change: Preserve skirmish AI difficulty when changing AIs (commit:dbed0473de9f86faba735bbee9dfc6f1abc87ba6, #4221)
+   * Change: Make NullBots build more VTOL rearming pads (commit:97660b3ef5d81a29b82af0b7e9fa1532c71c8d84, #4399)
+ * Networking:
+   * Add: Introduce abstractions for client/server-side sockets and connection providers (too many commits, #4105, #4189)
+   * Add: Introduce ICompressionAdapter facility for dealing with compression (commit:2fe630f32c35c8930932cd7805ff7f171de8a128, #4191)
+   * Add: generalize checkSockets() function to be usable with various polling APIs (commit:37615f58fe18e3af78d8758ea9f6065c4d213d16, commit:b05594e04d9311c1d46eef70c0e5302746b43d2f, $4196)
+   * Add: introduce per-WzConnectionProvider pending writes manager mapping (commit:250dabf6818d9ee7d0376cdbc9df61277fa77fa9, #4218)
+   * Add: host network backend configuration (too many commits, #4231)
+   * Add: GNS network backend implementation (too many commits, #4280, #4297, #4298, #4340, #4332, #4381, #4401)
+   * Add: Support async join approval redirect (commit:c791193c747c53d5203d7b8dd107fafd00e46dc5, #4374)
+   * Add: Implement pooling for NetMessages (too many commits, #4387)
+   * Change: Simplify connection status checks (too many commits, #4195)
+   * Change: Extract tcp's socketThreadFunction to a higher level entity as PendingWritesManager (too many commits, #4203)
+   * Change: Move checkSocketsReadable to a higher level of abstraction (commit:0b57a36cc4ca824db0fa14def321dd581eced568, #4208)
+   * Change: use WzConnectionProvider to create instances of descriptor sets (commit:75025145d3c168dcc4ba76210dca4ab8b4f5bbe4, #4209)
+   * Change: some more IClientConnection improvements (safety and completeness) (commit:4d9ae13eac77478497884ba2069fc00768d0e9c7, commit:45b93a96f81f87ef5b35b6bd22dd203edba668c7, #4210)
+   * Change: pass compression algorithm to IClientConnection:s externally (commit:e96d22e24e38f05e2b74a3bba1f6d42aa8c4aba9, #4214)
+   * Change: un-hardcode connection provider setup (too many commits, #4224)
+   * Change: Get rid of static message reader/writer instances (commit:337e2e89cafd2a65f2361029baf7e38d8dc434fa, commit:325845ea312059de843c68d7facdd1ef0f7afad6, #4337)
+   * Change: Avoid copying underlying NetMessage data upon transmission (commit:8702dc9d674fb266df17f6780fe33ec9ec59e886, commit:fbcb5dc6d47aef734f25b162e872f1953ff516cb, #4368)
+   * Change: Send game time updates only to human player slots (commit:04aea4afdf9d1ee3489560a7b950f719dca4c299, #4376)
+   * Fix: Bump MaxMsgSize and NET_BUFFER_SIZE, improve handling of sync logs (too many commits, #4303)
+   * Fix: Avoid excessive droid info copies in sendQueuedDroidInfo() (commit:72d59922ce5d3183238be2f2c6352b0729bd3b53, #4344)
+   * Fix: Fix crash on host game quit due to invalid C-style cast (commit:eee51e4465cc0935d2a108c233aea2987bc9429e, #4384)
+   * Fix: Various cmdinterface & netplay & blind waiting room tweaks (too many commits, #4396, #4406, 4424)
+ * Balance MP:
+   * Add: Add Particle Gun Laser weapon (too many commits, #4248, #4349)
+   * Change: Adjust Emplacement-PlasmaCannon cost 200 -> 350, buildPoints 400 -> 500 (commit:5fde89c6b84764406bd4af1f0db18976ac197fc1, #4206)
+   * Change: Increase spinAngle for Tracks in MP 45->65 to allow better unit packing (commit:a1f5090e9339c28ccd4a0b5aab2c34017bed9320, #4417)
+ * Other:
+   * Add: [Vulkan] Call vmaSetAllocationName for various textures, to aide debugging (commit:3f7a18ab966cc8ce08a4539399bb7eafac723e47, #4242)
+   * Add: Add underRepair state / counter to DROID object (too many commits, #4295, #4347)
+   * Change: Replace last occurrence of strtok (too many commits, #4260)
+   * Change: Use unique_ptr instead of raw pointers for DROID_GROUP storage (commit:f5ead772042e800766c584234a03292e246a2259, #4328)
+   * Change: Bump CXX_STANDARD to C++17 (commit:5adc6c973b03fe2884a9d6fe3e8bce702eeea8fa, #4343)
+   * Change: Bump MAPTILE per-player counts from uint8_t to uint16_t (commit:0c62391ee07c7b12d285ea000a3866ddc4204c48, #4346)
+   * Change: W_EDITBOX: Remove any \r or \n from pasted text (commit:699bc19195c4f149cf80196c6b45fcb4b3481843, #4366)
+   * Change: Emscripten updates. Support for newer Emscripten flags, bump CI to Emscripten 4.0.1 (too many commits, #4385, #4397)
+   * Change: Update README.md, split into some separate doc files. 21,000th commit! (commit:871f1c64fc0cc62b41fee1ea42abc8c8594e9940, #4386)
+   * Fix: Improve visibility related performance (commit:557c3cd1aa568d7d618f68d69033854f1cefaf32, #4213)
+   * Fix: Fixes for compiling WZ when specifying C++17 (too many commits, #4245, #4245)
+   * Fix: Fix various edge case scenarios and crashes, add sanity checks (too many commits, #4310, #4440)
+   * Fix: Inform interface when a droid is removed (commit:1f96fdf6fbf78279664a2d36b1024e2dd9033497, #4317)
+   * Fix: Various fixes for gifting droids (messages, sanity checks) (too many commits, #4319)
+   * Fix: imdload: Avoid unnecessary iIMDPoly heap allocations (commit:77d5d070ece882bc367630223abdbcb8648df96f, #4321)
+   * Fix: Fixes several obvious rendering artifacts, including smoke effects over structure baseplates (commit:ec05b946ce1b69fc15761f3ed580921b254761b5, #4325)
+   * Fix: Better sub-tile precision for tile screen coordinates (commit:a78f6f60552fb0da9a4002c32fd67f734081071e, #4322)
+   * Fix: Better preserve the order that models are drawn (commit:d32bca260c3ed78a11545f6837d60722c1adc9d2, #4342)
+   * Fix: gamehistorylogger: Output score as signed integer (commit:3e098dd6f9d8e9cc8b4c1439124e340e23383184, #4359)
+   * Fix: Improve PopoverWidget handling (commit:75a26d7b4e114ffa2e97ee18d8bebe30737f6936, commit:b09c9ba558b0d6eec5266bb0b02fd7a5dd59c162, #4379)
+   * Fix: Sanity checks for proximity messages (commit:b1869991eee027a815995b3cbec1f1825ace7eb6, #4390)
+   * Fix: Skip expired pages in PagedEntityContainer::find() (commit:89818a18ab18654ada670970a00187a1092d8279, #4427)
+   * Fix: Use surface height to calculate tile screen position (commit:262d841aefaf84c035c763769c3cbc999778c8e9, #4459)
+
+2024-11-13: Version 4.5.5:
+ * General:
+   * Fix: Various potential crashes (too many commits, #4124, #4127)
+ * Multiplayer:
+   * Fix: Handling certain socket disconnects and error states (commit:845dee0c21bf70cbff540aab2e277ba24999d6be, #4124)
+ * Translations:
+   * Change: Translation updates (commit:5a891f4b7d0bf110a38694514c6bbbfd6e6da95a, #4123)
+ * Other:
+   * Add: cmdinterface: New event output, room status json output (too many commits, #4128)
+   * Fix: Compilation with Vulkan SDK headers >= 301 (commit:7f8bb2772be83f57a41cd7caf05d84be87a57194, #4122)
+
+2024-11-06: Version 4.5.4:
+ * General:
+   * Add: In-game options button (too many commits, #4106, #4113)
+   * Fix: Transporter timer capacity label area should be clickable (commit:29343d2de5e835c51d08c67c2fbc8a72ccf806e5, #4106)
+   * Fix: Do not remove vision from transporters when loading saves (commit:e8530d5828d488523d09a475f012452cb428e2f9, #4094)
+   * Fix: Various potential crashes (too many commits, #4069, #4103)
+ * Graphics:
+   * Change: Improve high-quality terrain water (commit:adcadc8a5ce709e72fc53997ce5cb56c9540930d, #4101)
+   * Fix: Loading high-quality terrain water diffuse textures (commit:3a0bc57e8429d77a21af06e15a015076c498f4d5, commit:9008a3bf9fb0f2ff7295b44f87941ade1545121d, #4093)
+ * Campaign:
+   * Change: Convert Brief and Proximity files to JSON (too many commits, #4068, #4114)
+ * Multiplayer:
+   * Add: Initial support for admins changing settings via UI (commit:4e7f99ed92e2022f0793372f617511b60147daa8, #4110)
+   * Add: Host auto-kick on sustained desync (commit:f8ec4d844335ac70004861202db217f46f2cfab7, #4112)
+   * Fix: Refactor socket operations error code return (too many commits, #4092, #4097)
+   * Fix: Add campaign HQs to MP stats (commit:b9508a4ba5501d7cee69163807bcacb66c88b108, #4100)
+   * Fix: Display and log connection state on joining screen timeout (commit:cc6a1f30d6625e56d2d67305dbf198990cfd522c, #4112)
+   * Fix: Only play "Player is exiting" audio when player slot drops, ignore spectators (commit:b9c37598bc48ca1eb9017ea2e740a91e09b098dc, #4112)
+ * Scripting:
+   * Add: Research field for Stats object (commit:e09daaa63be94463850d8328cc8ce39cd7c660e9, #4091)
+ * Balance MP:
+   * Change: Plasmite Flamer boost (commit:b0eedf4f57b96a53aecbf8fa3ef0e73d3df816b6, #3989)
+ * Translations:
+   * Change: Numerous translation updates (commit:98f1a4801b60388685c8bd610b9b33048c0eb6e4, commit:7332fc166c40bf5418419a3cac05f25f7dbaeef7, #4066, #4117)
+
+2024-09-12: Version 4.5.3:
+ * General:
+   * Change: Give experience when squishing a scavenger (commit:736fae8e874744a7156de54ad4330cb22ab9ec01, #4046)
+   * Fix: Various potential crashes (too many commits, #4050, #4051, #4053, #4063)
+ * Graphics:
+   * Fix: Reset object animation state in a few places (commit:84b93d9c0b12e924a2aabaf35ce02d5124485df1, #4049)
+   * Fix: Additional graphics backend fallback options for macOS and Linux (commit:347b7d07835afe1ecf91fd4750890c67e6e3c1b4, #4052)
+ * Campaign:
+   * Fix: Visibility of units restored during limbo missions (commit:22fa9439c8515b52fd816323f9f0a2a0fe985b7e, #4045)
+   * Fix: Reset structure functionality references to objects when going offworld (commit:1de0822cdc1c3f1f650b1c531ebce2fe03918bf0, #4047)
+   * Fix: Fill VTOLs when going offworld (commit:87ae96c79799ebe066b5213ea3d49891b3a8a1eb, #4048)
+   * Fix: Update Remastered balance (too many commits, #4056)
+   * Fix: Update Reclamation addon campaign (commit:9f2ca2e418ed8dfdb9488cb0e11d052fdd3aa1b0, #4059)
+   * Fix: Update Fractured Kingdom addon campaign (commit:c980864ed7a920f1419d4027633438276da85d6f, #4059)
+ * Translations:
+   * Change: Numerous translation updates (commit:c0b1156087bc8654cc3d1f90fa588ff79769c7c7, #3996)
+
+2024-08-13: Version 4.5.2:
+ * General:
+   * Fix: Make "Reset Pitch" keybind consistent with initial starting pitch (commit:9dd8289e0dff40c2c61b410c924bb9f118b068cf, #4007)
+   * Fix: Pending research states when loading savegames (too many commits, #4025)
+   * Fix: Units set to hold position don't fire (commit:fa5922fd81af587ed9539240bd382e3e19d3a9ea, #4032)
+   * Fix: Various potential crashes (too many commits, #4020, #4021, #4033, #4036, #4037)
+ * Graphics:
+   * Fix: Improve effects blending when fog is enabled (too many commits, #4017)
+   * Fix: Improvements to groups UI (too many commits, #4016)
+ * Campaign:
+   * Fix: Commander rank thresholds (commit:2db8407581657cf341caf769dddc1f14d5024718, #4026)
+   * Fix: Update Fractured Kingdom addon campaign (commit:2e51e96bebce2c7796705105f3b3862bf9371461, #4038)
+ * Multiplayer:
+   * Fix: UPnP compatibility with certain routers (too many commits, #4023)
+ * AI
+   * Fix: Use eventGameLoaded for Cobra AI group initialization (commit:7801e80174efd8d20d0f0cab4177a185dcba7191, #4040)
+
+2024-07-08: Version 4.5.1:
+ * General:
+   * Fix: Various issues with special research topics, "give all" cheat (too many commits, #3961)
+   * Fix: Log failures preventing new terrain renderer use and warn user (commit:90b09a45ac6ecff6be5ffd4eb5c65c38849a3360, #3977)
+   * Fix: Display information for loading errors caused by mods (commit:b2e54ab549cc4fd34560c3d1d933312d42cfe860, #3978)
+   * Fix: Improve handling of mod loading failures (too many commits, #3981)
+   * Fix: wzapi: Avoid undefined behavior handling nan (too many commits, #3986)
+   * Fix: Various potential crashes (too many commits, #3959, #3967, #3971, #3974, #3976)
+ * Campaign:
+   * Fix: Propulsion stats in Classic balance (commit:06d1c93d8e11008492776fb86136bca922294a2c, #3961)
+ * Multiplayer:
+   * Fix: Various netplay log message & state handling issues (too many commits, #3960, #3980)
+   * Fix: UPnP compatibility with certain routers (too many commits, #3964, #3987, #3994)
+   * Fix: Support auto lag kick for spectators in lobby (commit:2d4ce35607a89961340370b0953713c92ec3ffd3, #3997)
+   * Change: GameStoryLogger: Log cheated var (commit:f0f280eaadd314a58aab1f54cc2e3aad9917bbdd, #3975)
+ * Balance MP:
+   * Change: Reduce prices of certain defensive structures and buff some towers and hardpoints (commit:8164d3bbcdc26320c6efb48125f2b4fa19e3fb69, #3952)
+   * Change: Adjust research cost of all defensive structures, except for artillery and bastions (commit:4e2578242c3359ee102669407181f9ad0c752e90, #3965)
+ * Other:
+   * Fix: Update autohost docs & examples (too many commits, #3983, #3984)
+
+2024-07-01: Version 4.5.0:
+ * General:
+   * Fix: Exclude retreating droids from formation speed limiting (commit:962136a52487178fb6085cd3fa1a46028173c1a8, #3943)
+   * Fix: GameStoryLogger: Generate final frame (commit:406aa3737d89bbb31796c1bd4112a158067194da, #3944)
+   * Fix: missionMoveTransporterOffWorld: Clear additional state (commit:976642896b2b6048b33720a496cb93ff8d750936, #3945)
+   * Fix: Only process structure group assignment if no droids are also selected (commit:01f80d8461cbdbabfcc3f4cdc965520e79ba6f98, #3949)
+   * Fix: Prevent artillery units under firesupport trying to ram targets (commit:badbf21afa3b22cf0319ad147b2fb26b21caf8d4, #3950)
+ * Campaign:
+   * Change: Some buffs for campaign weapons (commit:38f8e98902eaad204c4cca52263644f8509ad617, #3946)
+ * Other:
+   * Fix: Emscripten build info (too many commits, #3951)
+
+2024-06-28: Version 4.5.0-beta2:
+ * General:
+   * Fix: auxStructureNonblocking() for script-queued object removal (commit:14b50356ff4fc61d7bee4b509053c7fc369a65da, #3912)
+   * Fix: Script map max tile height handling (commit:b2865de38bc2067ea98bf310130da7530b81589f, commit:7a74975d0381c8ec13bb7c6e1c582863aec1531a, #3917)
+   * Fix: Improve checkReferences & object destruction logging (too many commits, #3916, #3938)
+   * Fix: Prevent underflow in getMissionTime() calculation (commit:ad280cc7c4dae19c41651490a557229c64b7bf94, commit:893a3b4a6caa70a3c21af7f1f3f9b7bd411e3152, #3918)
+   * Fix: Additional checks for AI chooser handling (commit:3854a97098e368f5051d9d233d75049555535d38, #3913)
+   * Fix: Create un-versioned mods/campaign directory (commit:5a978fcd1843c3e090111ad9ad6f636e50682281, #3924)
+   * Fix: Clip difficulty modifiers to always at least be 1 (commit:0d36fa7a18cea89f74c1b9e545e2388b881c5c37, #3920)
+   * Fix: structure.json: Add support for new "baseStructDamageExpLevel" option (commit:1c46b8980636c786e4a39c06d4e586f2c022d093, #3927)
+   * Fix: Handling pause states, and guide screen pausing (too many commits, #3930)
+   * Fix: Close button on multimenu form (commit:0247d2988f6113ea1bbcd08e8420e7cffc45f6e7, #3923)
+   * Fix: Guide Topics: Use different designs for Sensor/Commander guide units to avoid spoilers (commit:17b5ebf35aa1e4fc9fcb6dd965f412ae074ceea3, #3935)
+   * Fix: Droid map visibility after returning to home base from fresh away mission saveload (commit:aace08b1c96fc86321441d7b624144aaca11d5b4, #3934)
+   * Fix: Check if inside scroll limits before repair/RTB (commit:93a63ced26a9a05e909162264be1d229f4222481, #3936)
+   * Fix: Various potential crashes (too many commits, #3914, #3929)
+ * Graphics:
+   * Fix: Snap muzzle graphics rotation for invisible weapons (commit:4aa75471a7872562ebd4397e4e1bdfa39ce9663d, #3926)
+ * Campaign:
+   * Add: "PS1 Modifiers" campaign tweak option (commit:2dd38cb06914e4879a6a43d4c02f524a0bc3b157, #3920)
+   * Change: Move level loading codes into library (commit:4c6119ebe83e4a34809e28b8495cc90de4799cc8, commit:8609b3cabc6a1678e714990ba0f13339441cd04e, #3919)
+ * Multiplayer:
+   * Fix: Silence certain spectator-related messages (commit:3d3175d9542d09c73df9d85917ee36a6ae72e629, #3922)
+   * Fix: Send auto-kick messages as system messages (commit:8ce7354847ac9b38a23fda164e4ad43cba906fd9, #3932)
+   * Change: GameStoryLogger: Add player identity to FixedPlayerAttributes (commit:a1c4bb8512697436d00b537d4e6bf856cad1155c, #3921)
+ * Balance MP:
+   * Change: Revert 4.5.0-beta1 structure update for MP (commit:102e81cb7f63d9b712c97cc3a591b36c5bbd8f40e, #3927)
+   * Change: Decrease HP of Plasmite Flamer (commit:be0e48ac3f95a5e2d9e90fb16cbcbdf9e6b148f4, #3933)
+
+2024-06-23: Version 4.5.0-beta1:
+ * General:
+   * Add: Emscripten support (too many commits, #3613, #3630, #3643, #3730, #3743)
+   * Add: Alert the player to the Lassat being ready via text and audio cues (commit:83f03f31ec40e8d5d55931b41155b1aa65535abd, #3738)
+   * Add: Automatic assignment of units produced in factories to groups (too many commits, #3628, #3804, #3806)
+   * Add: Add an in-game guide viewable in the escape menu and teaching the player fundamentals throughout the campaign; Various internal UI improvements; Add guide.js to libcampaign (too many commits, #3836, #3863, #3865, #3876, #3893)
+   * Add: Formation speed-limiting (too many commits, #3904)
+   * Fix: Reset pitch on moving VTOLs after saveload (commit:8346cc2c6356f03deeda66f71aaca6e1405e9393, #3555)
+   * Fix: Return to base/LZ when set to retreat at a health level without HQ or repair units/structures present (commit:6a6832aca59e55b43c654d73e3692804c94500e6, commit:dfb2aea8a6d4b24b78fc2631cc99cefc9ebed4bd, #3557)
+   * Fix: Do not override saved camera position in skirmish saves (commit:36f970660b09d307a3303740595d3ccc7a598c74, #3558)
+   * Fix: Calculate weapon pitch from turret base to prevent wobbly effect on turret when very close to target (commit:e39e763259ca55539ad522159b13383270d37f14, #3538)
+   * Fix: Fix damage formula against structures and features incorrectly using Green rank damage reductions since v2.0.10 (commit:a19141ce7e58deaf35494e081da582321d3f9cd9, #3361)
+   * Fix: Fix fully armed VTOLs attached to sensors sitting down near former targets (commit:86bb59be4e2fed457f89387f8555b53a116e78d4, #3573)
+   * Fix: Various potential crashes (too many commits, #3646, #3647, #3657, #3789)
+   * Fix: Prevent scouting/patrol allowing CB droids observing something (commit:748df17934f2614811df7ed374f1ab48083f9933, #3685)
+   * Fix: Prevent droidUpdateBuild() passing a negative buildRate to buildStructure(), causing allies to delete your buildings sometimes (commit:d04f77d3707f9e8c38d9de64e8062e7cbfa65848, #3744)
+   * Fix: Prevent in-game menu saves changing the challenge score data with the wrong name. Thus not showing score on the challenge tip (commit:af14f626177bb190c164fbc7d9d8164c3472f24d, #3763)
+   * Fix: When upgrade change value is negative, use iDivFloor() to floor values (commit:2f00d6def39a0fad713b8210dd7d82268bbe7728, #3795)
+   * Fix: research.json: Add support for new "calculationMode" option to avoid accumulated rounding errors (commit:43e8fb0e1dcb76663444b317fc179de2ab068df9, #3796)
+   * Fix: Load saved research state before any droids or structures are loaded fixing research attribute re-application issues for home map objects (commit:ca7c20dde8769aeb373c78f77d1a32b409fd0312, #3816)
+   * Fix: Prevent sudden tab jumping in the build menu when trucks start a new structure (commit:4b17d7c439dbf9154dfc9bb82b4a45e519cbe2f8, commit:ec5362fc2598b1a625def9a0b98a898755812fbe, #3817)
+   * Fix: Enforce Weapon Pitch Limits + Fix Weapon "Unlatching" (commit:ce0014566e01034e0faa2afc73ac512bfe6676d4, #3821)
+   * Fix: Improve functionality of favorite buildings (commit:30ae267472c855127f534f4bdae576847cd13ab8, #3841)
+   * Change: Teleport units next to Nexus Links (commit:78f09c0a8f0dc3eaf36e4795366902e02eb4e0b7, #3556)
+ * Graphics:
+   * Add: Support for per pixel point lights (too many commits, #3587, #3610, #3614, #3672, 3784)
+   * Add: Add ability to reload model textures at runtime in the debugger (commit:d82483a1295c36b228d83ed2db1e17e1584887a4, commit:86b7b0104431004b34d4505113c97509035ec05a, #3599)
+   * Add: Let trees cast shadows and improve tree models. Plant them better to the terrain. (too many commits, #3679)
+   * Add: Add Collective/Nexus faction Forts, Collective mortar pits and bunkers, Collective T/L shaped walls, fix seams on Nexus bunkers (commit:130be3890753a321fac90997f6fa971080031e4d, #3822)
+   * Add: Give the Assault Gunner cyborg a unique weapon model based off the Assault Gun (commit:82e5de679df55c3a6f900aae6183b0aff9b083ae, #3875)
+   * Add: New light cyborg variants of the HVC and TK for Beta campaign (commit:5c137c5dea90992e2f7eceab6f89e85bce426605, commit:6b9e442095b5a96415faafe71f48099e2fa4fab8, #3875)
+   * Add: OpenGL: Detect GL_CLAMP_TO_BORDER extensions; glad: Add OpenGL ES 3.1 + 3.2 (too many commits, #3896)
+   * Fix: Rendering order of translucent models (i.e. baseplates) vs additive effects (commit:69681de090420cade30eddefc4e862fa7e99652b, #3614)
+   * Fix: Limit height of scrollable lists, notably fixing translation link being barely clickable (commit:9426f096a5e865b6c5a17d54bf648ef0925ec738, #3621)
+   * Fix: Fix object animation precision so as to prevent shake effect (commit:34b751620c9984580ce556e379ac585449fe400a, #3652)
+   * Fix: Fix vertex-winding between Blender PIE addon and Warzone 2100 (commit:4f78fe6c4923ab8a3cba5b3ef3f7be15e42a3f73, #3666)
+   * Fix: Normal terrain quality water + fog, adjust blending (commit:715d12d1f7da327f64b5d3333c918acd638bb3ab, #3693)
+   * Fix: Fix tiles under skyscrapers not changing to rubble (too many commits, #3731)
+   * Fix: Fix bad connectors on Mantis body resulting in odd VTOL weapon location placement (commit:70c1ca95cdaf963ceef9c7a0361abada40e6b260, #3786)
+   * Fix: Fixed weapon model issues on the Tank Killer and Super Tank Killer cyborg (commit:1b5cadd9836f6e9e2b2c18b7dd8c7805a9e184c0, commit:37d41ababf08f448975db6ead52aee82454e2973, #3875)
+   * Fix: Prevent shadow issues with all the non-fort rail weapons; Fix UV coords on some other mount models causing lime green areas on some (too many commits, #3890)
+   * Change: Process child widget clicks based on z-order, partial refactor of Radar widget (too many commits, #3655, #3662, #3664)
+   * Change: Adjust skybox fog (commit:83a3afd69dc38fbe2b66fe5ae28bf464dbac8f84, #3673)
+   * Change: Warn if OpenGL version is below 3.1 as we may likely remove support for them at some point (commit:d8ce8ba76b9e684fe9fa23c1f42783fffa7418e5, #3870)
+ * Campaign:
+   * Add: New Campaign Selector, enhanced support for campaign mods (and campaign balance mods). Includes a "Classic" balance option seemingly comparable to at least 2.3.9 (with a 3.2.x option) (too many commits, #3688, #3702, #3756, #3768, #3789, #3796, #3813, #3815, #3881)
+   * Add: Add tweak options such as auto-gain power after mission end, 40 unit limit, using classic timers, and auto-saves only mode granting 1 save at the start of a mission (too many commits, #3688)
+   * Add: Allow campaign library to map tech to map created artifacts, allow adding/deleting managed tech (commit:dc906767823af3bddd1acf2838265682e2ed126c, #3752)
+   * Add: Package + bundle the Reclamation & Fractured Kingdom add-on campaigns (too many commits, #3827, #3902)
+   * Fix: Remove transport timer on mission results screen after losing offworld or beating Gamma 9 (commit:063874aacf1ce4205aaea538e9131808b766ba5e, #3563)
+   * Fix: Prevent issues with Commanders losing groups, or Commander groups being "tied" together, after offworld transition or saveloading (commit:ba37c6ecc04a1da3c348d6a0408faab5838df9d4, commit:28f50a76c094dde37e79ce5b0efa79873c1a8b9f, #3596, #3728)
+   * Fix: Use initNoGoAreas() to prevent LZs from persisting across missions blocking areas that could be built on (commit:d0f004954ff136acc04bd5a2314d71f21b123bc7, #3602)
+   * Fix: Prevent launch button disappearing on LZ compromise until widget gets reopened (commit:f0f7bfc1f22cdf38a4e05a8df3ee5fcdfe92b954, #3604)
+   * Fix: Let debug mode persist across missions again (commit:8602760d68f074714aa7868545b3af85f46b14f6, #3742)
+   * Fix: Don't force player to destroy the Gamma 2 base to win (else would have to destroy it after the nuke event). Add hover unit anti-cheese on Alpha 12 land path factory triggers (commit:dc906767823af3bddd1acf2838265682e2ed126c, #3752)
+   * Fix: Prevent noisy assert when attemping to load saves when a flag position is outside scroll limits such as on Gamma 6 (commit:f96ba155a1716590efde7a1b0cef526801aec7cd, #3769)
+   * Fix: Prevent picking up artifact multiple times if units are within range at the same time (via a clone wars cheat for example) (commit:e35f41182bf0dd56f3b4d62ea7e872e48f7c41ae, #3736)
+   * Fix: Fix LZ flare position being 1 tile off for LZs on Beta 10 and Gamma 8; Bring back Mobile Repair units on Gamma 4 and replace MRP towers with TK hardpoints (commit:4ba5e83f215ef01dab7587376edd48f6dd8d8a6d, #3811)
+   * Fix: Improvements to video handling. No more 1 frame flicker if no videos installed (too many commits, #3813)
+   * Fix: Prevent "return to LZ" displaying and playing at the end of Gamma 2 sometimes (commit:4424f877be89401642acc14bd0b7e486128afb03, #3881)
+   * Change: Update structure durability, pricing, build times; Add Plasteel to Gamma; Improve damage output of all VTOL weapons by 3x+ (damage spread out over multiple shots); Make VTOLs come in waves for offmap spawns (commit:007b31e2e7759511b9e6e296f57a6d6dfbe491f6, #3552)
+   * Change: Hellstorm becomes an incendiary weapon; Buff AC damage to win against HVC against tanks if accuracy was bad like from low ranks (commit:007b31e2e7759511b9e6e296f57a6d6dfbe491f6, #3552)
+   * Change: Cyborg weapons stronger than tank variants; Nexus unit vision sensor set to NavGunSensor again; VTOL weapon/wave improvements; fixed rotation on Alpha 8 scavenger factory trapping units sometimes (commit:5811cdabfcb1f50540d2322e96cc0778e304dfa1, #3597)
+   * Change: Add new Beta campaign cyborgs: Thermite, Sniper, and Tank Killer so cyborgs are useful (commit:5811cdabfcb1f50540d2322e96cc0778e304dfa1, #3597)
+   * Change: Destroy player structures/features blocking spawn locations or transporter reinforcements; Remove most AI LZ zones that were used to block areas for this (commit:9321a87995382377eef0e17ad9fe92e1eabff28b, commit:d2e5af0c40303e572cb354467f1a4ca07198eda8, #3607)
+   * Change: Improved allied or player defenses/units on Beta 1, Gamma 3, Gamma 6; Move Turbo-Charged Engine Mk2 to Beta 7; Various small balance tweaks to weapons (commit:1f5bfb2425c7f212051702c69ed1eadc78a1f051, #3659)
+   * Change: Diversify and fix Beta/Gamma weapon power and build times, Make VTOL MRP an AA weapon like Sunburst, Flamer Bunker now uses Flamer Tower weapon (commit:dc906767823af3bddd1acf2838265682e2ed126c, #3752)
+   * Change: Buff Wheels speed and reduce cost and build time; Experiment with new rank thresholds based off the originals; Fix Gauss Cannon modifier and make it penetrate; Base Heavy Gunner off Heavy Cannon after feedback; AA buffs; Pepperpot becomes way stronger than long range artillery; Increase MRP HP (commit:4424f877be89401642acc14bd0b7e486128afb03, #3881);
+   * Change: Make Classic Commander/Sensor ranks the originals, which are doubles of those today for the first time again in 14 years (commit:8fb796890b0ada141f27746860b9c33a55c9a1b2, #3881)
+ * Multiplayer:
+   * Add: Non-blocking client join (w/ new join progress UI) (too many commits, #3825)
+   * Add: Add a map search bar to find your installed maps by name (too many commits, #3829)
+   * Fix: Fix Plasma Cannon Emplacement research showing a Pulse Laser emplacement (commit:c41351d649bcecad91f73372e4807441d606d3c3, #3684)
+   * Fix: Use sounds for quick chat events (commit:2a60e342597ee42fdc9e84f0a54c25c9e5714c3e, #3735)
+   * Fix: Make ban button add player to ban list (commit:be23c28a760a0e997e5940ac369d87c127be4e24, #3823)
+   * Fix: Let match settings console message display for more than a second at the start of a match (commit:f636cefe5375cbbc34e41a1e3c13fa530fb0b9b0, #3828)
+   * Fix: Update reticules when alt-click unloading transporters (commit:da7b3d3ea4c8b9f23cdc259aa00215850ca1e94d, #3840)
+   * Fix: Improvements to autoLagKick, kick votes, and ability to kick on "Waiting For Players" screen (too many commits, #3882)
+   * Fix: Check if there are available slots before a client wants to move (commit:221be397178a51017cb8ec3222e9dd5da86b870f, #3845)
+ * Balance MP:
+   * Add: Add Mk2 and Mk3 upgrades to the Depleted Uranium MG Bullets research line to help those that want pure MG in 1v1s (commit:96211672c757540e5b463653081aafe646b6fa73, #3834)
+   * Change: Leopard body upgrade: kinetic 12->14, HP 107->120 (commit:b1fabbae7da9544df974663276c91edb5873a353, #3575)
+   * Change: Port structure damage formula fix related changes to MP. Here a durability buff is experimented with compared to campaign (commit:1dcf7a0077dd11d26e15e6abf16f15f43d8c1966, commit:9709419754d3ee6671f579a822e942ad80b0c44f, #3553, #3618)
+   * Change: EMP Missile Launcher splash damage radius 2->3, long-range 3->5 (commit:6b84872dd3c1318bc4f7e163bf358198cb041d12, #3594)
+   * Change: HRA production time rollback 900->800 (commit:e7b3930de81307e163933521c29de0a1f5c7ad1f, #3626)
+   * Change: Reduce weight of Heavy Repair Turret 3000->2000 (commit:ea8b8f6f0c6b15bf42643d0fa14169e574874a19, #3833)
+   * Change: Make Hi-Energy Laser Emitter depends on Flashlight and the Heavy Laser depend on Pulse Laser (commit:832eb27cba4bc45db35aa70f34948b686046fd94, #3878)
+   * Change: Buff Plasmite Flamer HP to help it last in T3 settings when it appears (commit:823e73e7576b7256d325ec8b2829401525c12f55, #3899)
+ * Scripting:
+   * Add: Add new REF_FORTRESS structure type and decouple fortresses from GENERIC. Add STRUCT_GENERIC stattype (too many commits, #3777)
+   * Add: getDroidPath() that returns droid path (commit:e025ff02eb8fb95cdd1120d7a87555f2a8d93c3a, #3793)
+   * Add: Add "direction" JS field to Structure objects (commit:62bb60a00220aa59df684502da50ad7fa254747c, #3508)
+   * Add: Add an eventDroidRankGained event (commit:9758e9e0f128d949c0fbe82ae2aecb95597f3ebb, #3836)
+   * Add: Add BuildPower and Weapons to structures stats (too many commits, #3897)
+   * Fix: Fix property results in convResearch() (commit:bdf4a4c5a3143a213049a2c72966075350009f90, #3798)
+   * Change: Update QuickJS (too many commits, #3642, #3711, #3743, #3884)
+   * Change: change removeObject() API function to defer object removal. You must expect deleted objects to take immediate effect the next tick (too many commits, #3736, #3767, #3770)
+   * Change: Remove rules.js hack enabling cyborgSpade. Put the component in the automatically researched truck component research (commit:ce9994640cec9571b360b32c13cd4174d5ca91ab, #3828)
+ * AI
+   * Fix: Fix BoneCrusher! breaking on saves due to invalid global variable initialization, and fix various linter warnings (commit:5517171f566bdd49be1cf6759204da2bd732066b, #3654)
+ * Networking:
+   * Add: Replace miniupnpc with libplum to support UPnP, NAT-PMP, and PCP protocols (and can be made to work with IPv6) (too many commits, #3802)
+   * Change: Misc minor improvements. moved syncDebug*/WZFile related functions to a separate source file,  (too many commits, #3696, #3780)
+   * Change: Pass references to sockets wherever possible (commit:e68a3370613a9c8a87dfaa41f37d7a471799c2b1, #3729)
+   * Change: Reduce the number of netplay.h includes, replace with sync_debug.h if that's enough (commit:64025c9e8351d5dfc2450b220a065bc2f26bacf8, #3760)
+   * Change: Enable TCP_NODELAY for game sockets (commit:24517868a0bbaa3add345c3e13e61a53593228e4, #3801)
+   * Fix: Prevent net messages from being endlessly buffered in modes that don't send them over the network (i.e. campaign, skirmish, etc) (commit:02ff65758102bfcedc9199ba7a1fca2a3ba0bd12, #3720)
+   * Fix: Various network improvements (too many commits, #3889, #3898, #3905)
+ * Sound:
+   * Add: Support higher cap for MAX_TRACKS (commit:db06a776ff642bffcd069181156f97c512868e3d, #3567)
+   * Add: Convert audio .cfg files to JSON, remove a ton of lexer/parser code related to loading the old file format (commit:0594ed90d4e5d1e9d52d5b11e48b2e352c5bf556, #3722)
+   * Add: Allow audio JSON files to override existing entries (commit:39b0138c6b4a24a1d411e59f310dacd9860cee44, #3772)
+   * Add: Support loading audio from memory buffers, use this for menu music (commit:1c2e4eade476205c472465a92524647ce8da702c, #3886)
+   * Fix: Fixed generator power hum appearing when it shouldn't; Prevent Oil derrick pump sound from persisting onto offworld maps where they would be on the home map; Cleanup (too many commits, 3716)
+ * Other:
+   * Add: Dedicated host documentation (too many commits, #3591)
+   * Add: Add PagedEntityContainer to provide optimized page-based storage for effects, projectiles, droids, structures, blueprints, and features (too many commits, #3660, #3675, #3689, #3701, #3707, #3714, #3715)
+   * Add: Generate artifact attestations to establish build provenance (commit:ab9f711178b6fa68b2741991edf039cf2b9e1cbb, #3803)
+   * Fix: Fix distance checking with unit repair algorithm (commit:630ffd70599cfd5047c35d1535740bcbe702bfce, #3571)
+   * Fix: Make nvtx easier to package, and add more scope. FreeBSD build fix (commit:b4e108eb5ae5bae2015a4bdb64cc060151129fd3, commit:b9f9a8bed03dbcc5204de5b42e775c4de29a499a, commit:57d397b33ec953c53feaca70743356cca61d0b61, #3585)
+   * Fix: Add missing const across the code base (commit:6744315d7c6fc3185544e854d93e5f5d68ea09a6, #3593)
+   * Fix: Limit artifact / oil drum pickup events to half a tile height differences (commit:17f6300d3f4ae059836809a08cacdc32ac21b28d, #3625)
+   * Fix: Always enumerate map tiles in row order (commit:b43110d0fd2b63cb9181ba757d2066c69c5cf587, commit:8477d839d34db112e52b60e84e1f4474be935f30, #3641)
+   * Fix: Fix "makemehero" cheat not giving sensors the correct experience, add supereasy and insane chat command (commit:ae7905a5e2ff48ffe11d750fbe16c0a5f91ee5af, commit:c7b19ffa29cb60af64ea4511e477ebfd3b888f0f, #3703)
+   * Fix: Misc compiler warning fixes / dependency updates (too many commits, #3585, #3710, #3711, #3761)
+   * Fix: CRC performance improvements (commit:99684c9c920816f3a5bf512a0b779c8da1e4b642, commit:717e5bd0030e1ead6c527ebf839ebfdc5388bf35, #3800)
+   * Fix: Fix validity check for stdinreader (commit:f1a50c272921b9b5da8a8fe0c5d55cf82f4b3ebb, #3818)
+   * Fix: Fix wzmaplib to export .lev format maps that Flame can edit/read (too many commits, #3831)
+   * Fix: Improve formatting performance on Paragraph widgets (too many commits, #3891)
+   * Change: Move internal containers from linked-lists to std::lists (too many commits, #3572, #3579, #3588, #3608, 3612, #3671)
+   * Change: Very first steps to make DROID and STRUCTURE look like properly encapsulated C++ classes (too many commits, #3606)
+   * Change: Convert C-style stat arrays for game objects to std::vector (too many commits, #3616, #3617)
+   * Change: Use checkReferences to hopefully prevent all dangling pointer crashes and to help track them (commit:3dae28f96298753ac394863e2f72cd02f8c37475, commit:fa0d3c0ca2d3259bb342f1b839d2f25496bb286a, commit:7849c07f9ec5cadfd7c0add95cbcefbcf4977390, #3670, #3887)
+   * Change: Update super-linter, partially enable editorconfig-checker, fix some trailing whitespace issues (too many commits, #3794)
+   * Change: Make the makemehero cheat set hero rank experience to 2048 to account for the old thresholds (commit:2f38bfa8786e2aaac80bb561cd94efbd9949c7e5, #3881)
+
+2023-11-29: Version 4.4.2:
+ * General:
+   * Fix: Various potential crashes (too many commits, #3539, #3540, #3544, #3545)
+   * Fix: Clear active console messages when resuming from paused state (commit:aa5cbb60b26a28af3bf3945e9a3dfb68215a7224, #3533)
+   * Fix: Make sure VTOLs retreat to repair when attached to VTOL Strike/CB (commit:a093cddcf0927b492885b6a35a7f88689d425bba, #3541)
+ * Campaign:
+   * Fix: Move a spawn position on Gamma 3 (commit:eee44f2340e6a34681a05ec03ebaf3990f92e179, #3537)
+ * Multiplayer:
+   * Fix: Do not split departing player research centers with team in non-shared research mode (commit:f8778cdf4b6106215bfafff2d922fd6a3ef445a3, #3542)
+ * Other:
+   * Fix: Use std::make_{unique,shared} instead of raw new (too many commits, #3535)
+
+2023-11-20: Version 4.4.1:
+ * General:
+   * Fix: Potential corrupt game config file issue (commit:65728ec3302a5b9d2f9af1cc914647f087917e82, #3489)
+   * Fix: Loading old maps with invalid map tile numbers (too many commits, #3484)
+   * Fix: Text input handling of virtual key codes, CTRL+V paste, and displaying virtual key names (too many commits, #3498)
+   * Fix: aiBestNearestTarget throttling (commit:066f965612344a95858a2a7e8bf2c5f9f1ca3efa, #3502)
+   * Fix: Log spam for multi-weapon bodies (commit:50ed2f89ab86302309cb9fb095280733fa0e74fc, #3503)
+   * Fix: Spawn position of first clone in clone cheat (commit:36229e062672f3f82584866c12d581ae2087cb45, #3495)
+   * Fix: Bring back the 3 turret Ultimate Scavenger truck, Delay Ultimate Scavenger Helicopters a bit (too many commits, #3505)
+   * Fix: Always tell VTOLs to rearm after their VTOL Strike/CB sensor dies (commit:1648951a80cb12be316de0161091d24a26931a62, #3507)
+   * Fix: Check for non-default sensor/ecm stats like with repair (commit:9b9a4e3993f286d8df0cff12b3df22a4fea4122c, #3516)
+   * Fix: Various crashes and memory leaks (too many commits, #3484, #3515, #3523)
+ * Graphics:
+   * Fix: Handling of MAX_VERTEX_OUTPUT_COMPONENTS on OpenGL < 3.2 (commit:e65dbe7d5f879d915322fc17849613693d6483e6, #3484)
+   * Fix: Additional fixes for fallback shaders, gfx_api logging (too many commits, #3491)
+   * Fix: [OpenGL] Additional error handling for init (too many commits, #3504)
+   * Fix: Model connectors for Ultimate Scavenger Helicopters (commit:02bba99e7409155d8eef12e82a76ed8530eff562, #3515)
+   * Fix: DROID_PERSON model display size (commit:012efdd53aefc4033b6e4bcb6f76d8389a404ce8, #3519)
+ * Campaign:
+   * Fix: Remove unused artifact label from Alpha 3 (commit:550ba340c4d6f2c26298355757dd5a0b26af097d, #3492)
+   * Fix: Repair Facility ID on Alpha 9 (commit:e81ca4f5e6d51dc26e66f427f5116f667ec0815f, #3493)
+   * Fix: Command/Build reticule init for LDS_EXPAND_LIMBO missions (commit:d89e1878e575fbb02e1c84e95e5e1ab52b023241, #3512)
+ * Multiplayer:
+   * Add: Chat Options UI, host mute / options (too many commits, #3514)
+   * Fix: Player mute state handling (commit:edc449519d76ae3276d42714ea034d4daff15721, #3490)
+   * Fix: Non-builtin map replay desync (commit:19fa67f13f2b4a2f93c93ca88acc357ec77df6ce, #3501)
+   * Fix: Allow hosts to pre-configure all team slot choices (commit:ceb8eb50d92c05b0ec7b5070c0cc6e2225b60594, #3509)
+   * Fix: Sort loading players by position (commit:c879bbd610b8aee3b1de2a5485e5efb57d5a04a9, #3509)
+   * Fix: Grey-out button for AI difficulty if not host (commit:c59b3081b3a7e249b5c02bc39cd2afd372482a27, #3509)
+   * Fix: Adjust how pending disconnects are handled (commit:b55a09212d087ef26c4a59059d7cdea3f31e3e8d, #3511)
+   * Fix: Kick message appearing for map change (commit:daa37e7a2609ea6705527abf67be128b1a0374db, #3513)
+   * Fix: Mod hashing issue (commit:72ae817f1fd671459411189a539883ef385e921a, #3517)
+   * Fix: Refactor NETallowJoining, add async join approval support (commit:1d9fd6f97850689e2eb7ae99684dcc67e0db9e65, #3518)
+ * Other:
+   * Fix: Clean-up undocumented (and unused) eventKeyPressed (commit:b4cf7e25d65c24616d32966acf76666398fd688e, #3522)
+
+2023-11-06: Version 4.4.0:
+ * General:
+   * Fix: Count units inside transporters for mission end results (commit:f19cf46a28ec98f0b474347423d845407d6acbd1, #3436)
+   * Fix: Issues with intel map and saveload (too many commits, #3456)
+   * Fix: Improve the VTOL Strike / CB rearming behavior (commit:6b9557a07c5019c937632c31fe931a53484311b1, #3449)
+   * Fix: Fixup functionality when transferring a structure via giftSingleStructure (commit:31b4484b315019f3f0be0a9429f734994edec603, #3457)
+   * Fix: Use SDL physical key codes (scancodes) instead of SDL virtual key codes (commit:5040443f70c03776f3d4d294b5c942f171c205a6, #3470)
+   * Fix: Prevent campaign difficulty influencing skirmish in-game saveload (commit:e65aa099a74e1a9e7c7960ed5ebfe5df5e5da7e6, #3475)
+   * Fix: Various crashes and sanity checks (too many commits, #3467, #3471)
+ * Graphics:
+   * Add: Add separate "Terrain Shading" quality setting (too many commits, #3465)
+   * Change: Classic model fixes for scavenger structures (commit:ae9d4f1fb4d72011584133f3579c18120d7deb8d, #3473)
+   * Fix: Various gfx_api / shadow tweaks, better first-run determination of settings (too many commits, #3450, #3451)
+   * Fix: Vulkan MSAA issues (too many commits, #3448)
+   * Fix: Tweak medium terrain shader to better match the previous shader (commit:74b4cc999a9153c3c41f4c721853ca20c49b7953, #3472)
+ * Campaign:
+   * Change: Obsolete some more tech in Gamma campaign (too many commits, #3447)
+   * Change: Refine starting designs for Beta/Gamma 1 (commit:bc082d26baad8c5681250bcf6e4d2565959de810, #3466)
+ * Multiplayer:
+   * Change: Allow demolishing departed ally structures (commit:52c563f8e279b77709e51f06139dc1422cb87938, #3458)
+ * Balance MP:
+   * Change: Decrease Heavy Plasma Launcher effectivness against moving units, increase against stationary units and structures (commit:9fd8ec4801cd9e2903a5f5a5b4515f75f23a7e80, #3258)
+   * Change: Allow transporters to gain bonuses from armor upgrades (commit:d5b7444d1634cb5249d5e4cb1809b2b47fd47805, #3252)
+
+2023-10-29: Version 4.4.0-beta1:
+ * General:
+   * Add: Allow challenges to save replays (commit:2897e40ef22b64746d14b41aa77e68156bc79c1a, commit:6c307d0d783832656bb7eecf627047ee8db0e476, #3239)
+   * Add: Add new repair droid suborder in the right-click menu to control if they accept retreating units--defaults to off (commit:c789e0c1c6e2d42d4ee7f5a0eeed97d87e3c824d, commit:b8e9ee3d36bb7f2f8228c25ee7c8e755f2a01833, #3229, #3402)
+   * Add: Groups UI menu for group management (too many commits, #2828, #3363, #3387)
+   * Add: Add UI Help Screen overlay (too many commits, #3363)
+   * Change: Make artillery units gain commander bonuses, mimic the commander's orders, and take up slots in the commander's group (commit:faeaeede08316a9c847cbc1784bbcee1c748b173, #3177)
+   * Change: Make sensors follow the Commander thresholds again for rank (commit:5d31891c18540ea28e74351e7cf27793d8b40258, #3259)
+   * Change: Increase minimum vertical ascension speed for slower VTOLs (commit:b3c7788f7a58bf775bbddf1f8e98f29b80cfdaaa, #3279)
+   * Change: Allow EMP weapon subclasses to do actual damage, add new stat "empRadius" to determine the EMP effect area rather than using the splash radius as before (commit:fa72ffe8c12d7c5030cbb6012c48e8d2c4c91ff9, #3343)
+   * Fix: Properly update obstacle maps for allies (commit:7c3fc0f4369da3bff55a03aa6aad15abe26b2358, commit:e2f62965a03dc6ac97404ff6e009e232880d95eb, #3182)
+   * Fix: Show the appropriate ready text in a Challenge at the right time (commit:f3b3141eab239acaeecd6dd02b5173140e28a3e2, commit:f6ca8d1a9e728d8260f8b5cbaa6e35e1c806192e, #3238)
+   * Fix: Do not blow up allied objects for the "get off my land" cheat (commit:313793b8f738e7ea69f810766c5770bfa105fdec, #3275)
+   * Fix: Various crashes and sanity checks (too many commits, #3273, #3284, #3301, #3311, #3344, #3346, #3371, #3380, #3382)
+   * Fix: Preserve artillery weapon pitch after firing (commit:fd51e758d6cbba1d20372566cfbfc282c410152e, #3178)
+   * Fix: Add exclusion list for terrain type overrides for builtin maps. 3p-Monocot tile behavior fixed (commit:50327484546bc45b4e4dca70696bf04845f872c8, #3287)
+   * Fix: Improve map hard-coded id handling, fixes for save game queued droid orders (too many commits, #3313)
+   * Fix: Prevent droids from sometimes moving towards and ramming into targets (commit:4129da71ba9f47673254a0d7df88e6a798438263, #3317)
+   * Fix: Fix indices of baked-earth and green-mud in the terrain table (commit:ab2db156ce8b12d409fc4d720ede63e60bafef9b, #3396)
+   * Fix: Fixing the suggested save names when trying to game the numbering system (commit:4cfce4d61b3f424bd73dec428592c4b6436cec0d, #3398)
+   * Fix: Allied repair not working (commit:9529e46a8c3b5bb7d206747a591642db90bb2525, #3399)
+   * Fix: Prevent repair units from highlighting their own commander (commit:cbce1ccd55b069848543fb5e04fccece07df6c72, #3400)
+   * Fix: Improve scrolling in high FPS situations (commit:c936be8f1ad0be09efa067402a12f747b71ba113, #3410)
+ * Graphics:
+   * Add: Initial instanced rendering support (too many commits, #3114)
+   * Add: PIE format 4 and model level enhancements (too many commits, #3117)
+   * Add: New terrain renderer: single pass, terrain normal mapping, classic terrain, + more! (too many commits, #3127)
+   * Add: Initial support for multiple render passes / offscreen FBOs. Minimum requirements for WZ bumped up to OpenGL 3.0+ / OpenGL ES 3.0+ (too many commits, #3290)
+   * Add: Various terrain / lightmap improvements (too many commits, #3295, #3296)
+   * Add: Add T and L shaped Nexus faction walls for MP (commit:48d5074fea313b768d90c32771ff76f9fdf80341, #3312)
+   * Add: Implement initial cascaded shadow mapping support (too many commits, #3307)
+   * Add: Split iIMDShape, separate game state data from display data, + initial graphics overrides support (too many commits, #3350)
+   * Add: High terrain rendering tweaks (too many commits, #3368)
+   * Add: Terrain water rendering / shader tweaks (too many commits, #3373)
+   * Add: Initial attempt: use lightmap in the object shader (commit:06283eb385eae7d04c0f7ebdaee0fe793f600e57, #3375)
+   * Add: Tweak high terrain shader (too many commits, #3379, #3422)
+   * Add: [Vulkan] Add support for 10-bit color component scene buffer and swapchain format (commit:f5b9880fb9d04ec2e293d47568ae18c3c3dd40b7, #3429)
+   * Change: Classic / normal model improvements (too many commits, #3347)
+   * Change: Classic model fixes for the shadow mapping implementation (commit:2f2781b630526ea574b93472f12a4c52d63b2809, #3415)
+   * Change: Refactor intelligence screen (too many commits, #3424)
+   * Fix: Remove a sliver on the back of the standard sensor turret (commit:8af3d84ad19da331dabb1eb661d57d8f9ce58fae, #3263)
+   * Fix: Close up a gap in the Mini Rocket Pod (commit:de84c71f068307c7325ee24d9e61c75ef37ece1f, #3277)
+   * Fix: [Vulkan] Support different swapchain compositeAlpha modes (commit:2b43608c2d5683455f35c4ce52ffb7ce8d326a30, #3351)
+   * Fix: [Vulkan] Fix pipeline rasterizationSamples mismatch with renderpass (commit:21db14c5d51a350d20c34a001ecf895afe818d54, #3384)
+ * Campaign:
+   * Add: New non-cheatmode chat command "rank x" (0-9) changes enemy ranks immediately, "prop x" (0-3) changes produced/spawned units to use type I/II/III propulsions (too many commits, #3328)
+   * Add: Add unused NEXUS sound when absorbed factories produce units on Gamma 5 (commit:aa9f6d323ce87670499009c5df91ab3069740bf1, #3342)
+   * Add: Utilize the transporter return timer on Beta End (commit:452e21bc50b79b9d854b974e4256d20ad96b56c6, #3421)
+   * Change: Use Whirlwinds instead of Cyclones when starting Gamma from the main menu (commit:58cbe48710050fb71deeb7c478d761eb2477005a, #3228)
+   * Change: Allow Hardened Sensor tower to appear in Alpha 5 research (commit:1258362793dfb110e8e5aa29a82649ed8cb6eac8, #3234)
+   * Change: Move VTOL pads on Beta 8 next to the Command Relay instead of being behind a base (commit:4c6e98529e1c1b0c840d693859df207a150f46d9, #3287)
+   * Change: Make New Paradigm use Hardened Sensor towers from Alpha 8 onwards (commit:20b0918d62606137a862fd7de8f74d53e5fc5a07, #3287)
+   * Change: Route orderDroid, orderDroidStatsLocDir, orderDroidStatsTwoLocDir though network code paths like in skirmish/mp (commit:814435aa62b11698848b7fa393c91e036c1e5066, #3302, #3342)
+   * Change: Use a randomized assortment of the best design components for Beta/Gamma 1 if coming from the main menu (commit:393faf4c7c72e010f15a761db2935ad7931c7408, commit:6bc54e69ad176be062c6e165f287201013365f4a, #3331)
+   * Change: Huge var to let/const conversion for all data/base scripts (commit:6ff8bed4f1f450b4a18f3c9544d9fd4479c654d1, commit:5feefe20a4b92f1e8af238e8c5a0bd2acf92005a, #3341, #3349)
+   * Change: Let research upgrade the mobile repair turret, set it to a baseline of half the repair facility (commit:f410d021436be8ace64a3927f02994d4528ef298, #3356)
+   * Fix: Restore original northern NP base layout on Alpha 6 since obstacle maps are fixed for the scavengers so they don't drive into NP structures anymore (commit:ba046ab6f78563a0c27cc9c16699607e4b0becde, #3227)
+   * Fix: Fix saved coordinates for newly produced units inside transporters causing units to appear in a corner coming back offworld (commit:183db154053bc477de47949e79b379f9110db8b5, #3264)
+   * Fix: Show reinforcement timer for offworld missions after the first exit rather than immediately at mission start if they're available at the start (commit:76487add03a2e832a18aab9a5128d40a13da45f1, commit:4fee3bb360dbe2c923b8856e9c54595cefcde152, #3270, #3275)
+   * Fix: Cancel in-progress/held research inside labs when changing campaigns so research results don't disappear upon transitions--like Mantis body (commit:2d92571b2187eb78b906209fee58230af66efa6b, #3278)
+   * Fix: Force the player to bring a truck or factory into the Gamma 8 area of the map before winning Gamma 7 (commit:5a5270b76332f38f81739dbaa095ced3c75531a7, #3306)
+   * Fix: If the player beat Gamma 2 with no built factories and no trucks on the home map they would fail coming back. Give them a fail-safe truck at Gamma 3 then (commit:de8cef477678b73e66f5b08fb96414067afd2577, #3314)
+   * Fix: Fix libcampaign's camSetVtolSpawnState() when the stop object label is passed so that all spawners tied to the object get deactivated and not the first one encountered (commit:42d337bf7672f7236362ab68f68c839dea6f888f, #3342)
+   * Fix: Transporters that dropped off units on Beta/Gamma 1, and are still flying back to go off map, would persist through the end of the mission and cause an unavoidable early exit trigger to load the next mission (commit:1371bcf4c89eb4fe2a88da411f0c6a647e77af27, #3364)
+ * Scripting:
+   * Add: New events eventTransporterEmbarked and eventTransporterDisembarked to fix Command/Build reticule edge-cases with units in transporters (commit:00ca99a53a61d9951fe94bce934b33b9996e8181, commit:19b0a8c108e56b617499dc9f3d5784ee5e52c87d, #3394)
+   * Change: Expand addStructure() and changePlayerColour() functions (commit:6e5c9cf224578ca0d9c2f44ba6ff8b58821fd792, #3202)
+   * Fix: If trying to use enumCargo() during an eventTransporterLanded the Commander was already removed from the transporter group (commit:88298709cdcdc38042ed6055b1739e7272005c67, #3331)
+   * Fix: Fix moduleToBuilding / label mapping for loaded maps (commit:f9efb30305dc0a25dcfb8ff560f28fa3228e9a0b, #3427)
+ * Multiplayer:
+   * Add: Add options for handling player resources on leave (commit:6feff17279f410061d0ce56a7f8f2a0289b00967, commit:c82c37c892750c3179ef1d0642a0927893f89675, #3243)
+   * Add: Initial attempt at verifying identity on join (commit:64f1834b8acaa078bb42bed77ebf1441b153b8e3, #3059)
+   * Add: Multiplayer / network / lobby / chat enhancements. Quick chat, team strategy, pregame countdown (too many commits, #3401)
+   * Add: Add overrides for name and color from rating lookup (too many commits, #3316)
+   * Add: Various netplay, voting enhancements / kick restrictions (too many commits, #3430)
+   * Change: Output all chat messages to command interface (commit:2635fcbcd5ed8d85cd0dc88f95b0ba03f11c3c56, #3274)
+   * Fix: Fix default name "Commander" overriding player names on exit, leave, kick etc. (commit:23a66b04968fd72f33f8e11e9f7165ee9a352569, commit:26f2d66d00d24e596d03be437dae88433a11554e, #3152)
+   * Fix: Initialize passive play warning properly (commit:e05925721d191effa24a8ba0286c576b36868d70, #3254)
+   * Fix: Multiplayer stats and options improvements (too many commits, #3283)
+   * Fix: Fix loadSaveFeature2 for spectator-assigned features (commit:8408aa2144fd8f89cfde73b4a29431d0e3bed8f5, #3310)
+ * Balance MP:
+   * Change: Increase Super Transporter base HP from 500 to 3000, Cyborg transporter from 200 to 1000 (commit:e7623112976ed37b5c6a9865a41998cdcc7c502a, #3215)
+   * Change: Remove splash damage from VTOL Lancer, Tank-Killer, and Scourge Missile (commit:6f91451a6d30aa949c011353dd491a842b4f7169, #3222)
+   * Change: Increase range of HVC turret from 9.5 to 10--rollback to v3.1.x (commit:56d42a9d9bd2e2bcfbe7cb85975e6550f7223ee5, #3214)
+   * Change: Rollback price and times for Stabilized Rockets and HE Rockets Mk3 research to match 4.3.3 (commit:e0838fdf7f09d94ffba6bb4e6f1dd6b2d9593bed, commit:6e46316f5da06e016a26fe84f632a7765c3f7787, #3219, #3249)
+   * Change: Increase Sunburst AA ROF from 58 to 90 (commit:d302a36daf8dff148e2a996c9e7e2384a4c5d731, #3217)
+   * Change: Reduce splash damage of HRA and Seraph, increase Seraph reload time from 135 to 150 (commit:889c85802f865d5d15ee9d22afd09ce30afd4ff8, commit:8960d228b8def34e90f8c7e08e3fc9f530f004a0, #3225, #3266)
+   * Change: Various AA turret cost, HP, or ROF tweaks (commit:6b437e7e4acffc94e142277e62724c4b1e023aaa, #3224)
+   * Change: Increase costs on artillery (commit:ae15ddb3c553b437b491a9b161b2dcd7123626db, #3223)
+   * Change: Various stat tweaks to Needle to help fight Scourge Missile better (commit: 1258362793dfb110e8e5aa29a82649ed8cb6eac8, #3226)
+   * Change: Return various Tank-Killer stats to v3.1.5 to account for the appearance of HRA (commit:4f0778642f70123ae209491649f435d9bd554296, #3205)
+   * Change: Increase build time of Fortresses by 25% (commit:d9ee0521362ddb44fdb895d8c2d8c098960c0a56, #3232)
+   * Change: Reduce ROF of EMP Mortar from 130 to 90 (commit:dd0f030999404a077a636dcf9ba7ee6f42b4bd63, #3241)
+   * Change: Increase ROF of Cyclone by 10%, Reduce range of Hurricane from 16 to 14 tiles (commit:073f69e7cdf70b5f53788c7fe85708f2abee20a1, #3244)
+   * Change: Reduce weight of EMP Cannon from 10,000 to 8,000 (commit:8bd50fe17b40d2e7dc4932c3d89ef33829b6d0cb, #3245)
+   * Change: Make Leopard and Panther come earlier, reduce weights on red bodies, and adjust stats on Leopard, Retaliation, and Retribution (commit:86fc2f9cb39ed2849d8c51dbb40b7ec03ab3e771, #3056)
+   * Change: Reduce weight of Heavy Cannon from 10,000 to 8,000 (commit:78564b7174a0f01b5e550bee6a3adcacd0336223, #3246)
+   * Change: Required research for Gauss Cannon changed from Hardened Rail Dart Mk3 -> Rail Gun (commit:6b7cc905ff8ce716996400f5c460944cf0a935a7, #271)
+   * Change: Reduce Cannon VTOL weapon hitpoints, increase rockets (commit:ee1a232e130973d27f1c2a937dc00b3deca4cd23, #3303)
+   * Change: Buff Robotic/Advanced repair facility research bonus to 100% from 50%, and let mobile repair turrets and mechanic get upgraded by repair research (commit:6567ce3f4778f23f58d5bd2e6e2f62a822ed7a80, commit:3118a6dcdce487bb3daeef54db890c590f7ee6de, #3391)
+   * Change: Bump VTOL bomb weapon HP up by 10% (commit:806f503494f505ab2fc6c1dfe1c7f3a62dd2e189, #3395)
+   * Fix: Replace NavGunSensor with the default sensor for Sunburst, Avenger, Vindicator, and Stormbringer AA sites (commit:bb82a7a76208e818bfedda9f79e9677859a37201, #3257)
+ * Other:
+   * Add: Introduced scope-based profiling instrumentation. Current instrumentation can use NVTX and/or VTune instrumentation (too many commits, #3285)
+   * Add: Support cmd interface with unix socket (too many commits, #3345)
+   * Change: Improved performance for looking for the best nearest target (commit:46d3d9223a989a87b6e0ce74f4552cd3e75b1fa4, #3144)
+   * Change: wzmaplib updates (too many commits, #3236, #3240, #3313, #3321, #3330, #3334, #3335, #3380)
+   * Change: Increase maximum saved designs viewable in the design menu from 40 to 500 (commit:b55b8cf58b96126e127d1d077846903d8c0411d0, #3261)
+   * Change: Simplify faction IMD display (too many commits, #3348)
+   * Change: Flatpak: Update to 23.08 freedesktop runtime (too many commits, #3369)
+   * Change: QuickJS: Replace tl::index_sequence with C++14 std::index_sequence (commit:30d32697dfe05906b6979c9d42f73c7ff8a4f0b8, #3404)
+   * Fix: Don't hardcode port number to "2100" in some console text message (commit:ac014411d560d9e05e06e2eed05fafb9d9fcdfde, #3175)
+   * Fix: Mod loading / cleanup improvements (too many commits, #3282)
+   * Fix: Reduce performance impact of the draw sensor range code (commit:60d4ebc06b4337d61b3ce730c5720a390238d818, #3297)
+   * Fix: Thread-safety improvements for debug() (commit:dac2b6476f121f3ac6e924361b0323249809a3be, commit:e816b67568d42db9d81ed4da1ec094d4dabbe87c, #3309)
+   * Fix: The "Unit Destroyed" sound wasn't playing properly (commit:fdc36c97727bc3ddfef3d9cb6b007a0973de0b90, #3336)
+   * Fix: Show total ranks/units correctly for LDS_MKEEP_LIMBO missions (commit:3dbedc98eb3260163fa6104515588e033c61b84d, #3339)
+   * Fix: Display remaining feature object HP correctly in the console (commit:56e96515d2a42d671ae51e4c2540f914182b4f0b, #3340)
+   * Fix: Only attempt to play outro if user has videos to begin with (commit:588bda8a5e26aa97600b229524ec86dd0a04fca1, #3342)
+   * Fix: [CMake] Update IncludeFindCurl.cmake - better OpenSSL v3+ handling (commit:b21dd483e31cfb2c4e6fc2c29ab2c54904b364ad, #3354)
+   * Fix: Snap improvements (too many commits, #3355)
+   * Fix: Fix WorldToScreenPSO draw call count (commit:0b7e44ea7e21461a2313d89b4d1cebcb95d20317, #3407)
+   * Fix: Fix the intentional crash tester function (commit:0d8853e6a7318abb5b1ea4968c60e8e5ef3d5c78, #3411)
+   * Fix: Various netplay message tweaks (too many commits, #3414)
+   * Fix: Prevent Commander reticule widget list scrambling on save-load (commit:9423ce1482820a4099ad70f84fc6a6cc6197d9ab, #3403)
+
 2023-04-16: Version 4.3.5:
-* General:
+ * General:
    * Add: Display kills and units in spectator stats UI (commit:b1c52e8be428e7b239e9e845288e7a968a017551, #3186)
    * Fix: "Get off my land" and "kill selected" cheats (commit:f51f234ef5902d4033d6b58a93049e03239c8072, #3171)
    * Fix: Don't assign trucks from factories to commanders (commit:f04e2d3932910213f67f82759b2005c86ff8dd0e, #3179)
    * Fix: Repairs: Reset secondary only after "go-to-rally-point" was triggered, separate RTR logic from RTR_SPECIFIED (commit:15c6fc7ae57ccc2d4dc8fc205eac14c83fd3eb71, #3194)
    * Fix: Various potential crashes and corrupt config issues (commit:fe7ebfa2bd406ee73c7363afad3a4e26e9297ce9, commit:d07b94e924ad247aaa27df5305e5aee85552da60, #3208, #3211)
-* Graphics:
+ * Graphics:
    * Fix: Properly render unit resistance bar (commit:099580bc88e5443ee9f76c043102b97055e11866, #3183)
-* Multiplayer:
+ * Multiplayer:
    * Add: /hostmsg lobby chat prefix that sends a message only to the host (commit:c563170c7eae67af799e7b8ba19a66f2241fb26f, #3204)
    * Change: Add Heavy Rocket Array to all skirmish AIs (commit:7c62ce1ddabe5925c75f5e85722fee54b449118f, #3196)
    * Change: Improvements to Nexus AI (commit:86ef42d5f8419f88f96d53a2aef69b18eae77cfc, #3196)
    * Fix: Desync with losing player-turned-spectator when certain defensive structures remain (commit:b15ec308db501988b1f8b0fb5c6e18eb1aa16605, #3189)
-* Balance MP:
+ * Balance MP:
    * Change: Slightly increase the build cost of Mortar1Mk1 (commit:0b4bfc612121d2c5bad91908a54900aeb9323581, #3190)
    * Change: Return Tank Killer reloadTime from 160 -> 180 (commit:3ce486735df52445042add20897de01679d3d75f, #3203)
    * Change: Increase HRA production time from 800 -> 900 (commit:d5f5fb28d95f6c285932bc40646bb0fcb3e6d4bd, #3206)
-* Other:
+ * Other:
    * Fix: "kick identity" command should only kick, not ban (commit:da1d8770fc77e34272c4a4b7529f2ea64855b551, #3210)
 
 2023-03-26: Version 4.3.4:
-* General:
+ * General:
    * Add: A separate Ban/Kick activity, allow removing from ban list while running game, and fixes for spectator mute (too many commits, #3163)
    * Fix: Various potential crashes (too many commits, #3100, #3101, #3106, #3108)
    * Fix: Let some older maps show up again in the map lists (commit:444a637345a3578b327d278b7328ebd4d0ff91db, #3109)
    * Fix: Always cancel research when starting it in another lab (commit:5f7eb0e172fa52c2e443220a5370ed88a7345216, #3150)
    * Fix: Persist Snap config data by using SNAP_USER_COMMON (commit:6366d7b51ba697351abe430a402c9e5a77a837a7, #3160)
-* Graphics:
+ * Graphics:
    * Fix: Fix missing sections on Tank Killer super cyborg (commit:3e7b9d5382ab09b24a7793eb2826327f8f1382dc, #3092)
-* Campaign:
+ * Campaign:
    * Change: Gamma 4: Remove middle tank traps guarding team Alpha and remove the repair units to account for new repair micro-AI (commit:e70f636345f71b02cbed9d25628ef2a260809fa2, #3058)
    * Change: Always blow up walls and tank traps during Nexus transfers in campaign (commit:8e7e7fdad4ec3ed5059163eeb0f36a699964fa23, #3118)
    * Change: Improve difficulty differences on Gamma 9 (commit:e396fdf9f45a7d681d1b9b477717f52d1bcec48b, #3118)
    * Change: Make Alpha 1-3 missions flow a bit more smoothly; Increase player flamer ranges (commit:31f18cc2478dcc1a62f72c171a627088ee059be4, #3132)
    * Change: Make Gamma 1 easier by activating factories depending on what part of the valley you exit (commit:a4dc62af69db6ebd77ff4f506b7a1c2241828bbe, #3162)
-* Multiplayer:
+ * Multiplayer:
    * Add: Add lobby command: makeplayer (commit:64f50bdbb74053c8752197c634ed6642af6f0754, #3107, #3108)
    * Add: Add a join message (commit:d48073c810ac385449b275132449d1c82fdbab1e, commit:dad97d406c539399d4c1d519b59b8cbad314620d, #3105)
    * Fix: Do not truncate spectator labels (commit:66fcbeb22decbd06b49252580e8df91d5b1867b6, #3149)
    * Fix: Stop Mission Time and store it when the results screen pops up (commit:5bad9826b739252b1ffea5b72b7bcb27823aeee1, commit:8a23639e683c4d1fb5696fd23d4c961b4080e66c, #3151)
    * Fix: Preserve player identity on rename (commit:13a21a13c07983745327b8ee1e1653b516d92e76, #3155)
-* Balance MP:
+ * Balance MP:
    * Add: Add new Heavy Rocket Array weapon which depends on MRA and HEAT Rocket Warhead Mk2 (commit:ca9dc06f0ee3a86f29940a7a15038043292321f5, commit:d9d9d3e54df4b5aeb41fba8bb322ae71c73beeb8, #3103, #3141)
    * Change: Reduce effectiveness of artillery modifier on bunkers 40% to 20%, Reduce effectiveness of artillery modifiers against Tracked 40% to 30% (commit:46cab7cad2adbdb80150588852480eabac496510, commit:669fb3abf708662cbd5d3dd3be6cae1c94d24605, #2894)
    * Change: Make Heavy Repair Turret and Repair Facility appear at same time, improve facility repair speed by 10, and make light repair turret cost less and build faster (commit:5ba9b81f4a88546d462f8dc13f35fb3ac0ba6201, #3022)
@@ -53,7 +886,7 @@
    * Change: Reduce time and cost for Command Turret research by 50% (commit:e8465be7fc6c044ffd72e7aad9dba0c1f865022a, #3121)
    * Change: Reduce research topic time and cost for most defenses by 50% (commit:bf408ac0b59c56b51fceda8e9cd54fcd62cdf089, #3122)
    * Change: Increase reward for some engineering upgrades to 30% (commit:96e6878d33c4e2d13665051e08a7915ecdec6bde, #3134)
-* Other:
+ * Other:
    * Add: Add autohost and autorating documentation (commit:2ab6c37eeb684f6b1936eb49a263f3412a92dfed, #3138)
    * Fix: Fix building with GCC 13 (commit:e872db579ec2847de29d1e3a96b35902f643b9fb, #3090)
 

@@ -1,33 +1,11 @@
 #version 450
 //#pragma debug(on)
 
+#include "tcmask_instanced.glsl"
+
 layout (constant_id = 0) const float WZ_MIP_LOAD_BIAS = 0.f;
 
 layout(set = 2, binding = 0) uniform sampler2D Texture;
-
-layout(std140, set = 0, binding = 0) uniform globaluniforms
-{
-	mat4 ProjectionMatrix;
-	mat4 ViewMatrix;
-	vec4 lightPosition;
-	vec4 sceneColor;
-	vec4 ambient;
-	vec4 diffuse;
-	vec4 specular;
-	vec4 fogColor;
-	float fogEnd;
-	float fogStart;
-	float graphicsCycle;
-	int fogEnabled;
-};
-
-layout(std140, set = 1, binding = 0) uniform meshuniforms
-{
-	int tcmask;
-	int normalmap;
-	int specularmap;
-	int hasTangents;
-};
 
 layout(location = 0) in vec4 texCoord_vertexDistance; // vec(2) texCoord, float vertexDistance, (unused float)
 layout(location = 1) in vec4 colour;
@@ -62,7 +40,10 @@ void main()
 		}
 
 		// Return fragment color
-		fragColour = mix(fragColour, vec4(fogColor.xyz, fragColour.w), clamp(fogFactor, 0.0, 1.0));
+		vec3 fogPremultAlphaFactor = mix(vec3(fragColour.a), vec3(1.f,1.f,1.f), vec3(float(alphaTest)));
+		float fogFactorAdjust = mix(1.f, 0.f, float(alphaTest));
+		fragColour = vec4(mix(fragColour.rgb, fogColor.rgb * fogPremultAlphaFactor, clamp(fogFactor * fogFactorAdjust, 0.0, 1.0)), fragColour.a);
+		fragColour.a = fragColour.a * (1.0 - clamp(fogFactor, 0.0, 1.0));
 	}
 
 	FragColor = fragColour;

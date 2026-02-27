@@ -1,19 +1,32 @@
 include("script/campaign/libcampaign.js");
 include("script/campaign/templates.js");
 
-const COLLECTIVE_RES = [
-	"R-Defense-WallUpgrade06", "R-Struc-Materials06", "R-Sys-Engineering02",
-	"R-Vehicle-Engine04", "R-Vehicle-Metals05", "R-Cyborg-Metals05",
+const mis_collectiveRes = [
+	"R-Defense-WallUpgrade05", "R-Struc-Materials06", "R-Sys-Engineering02",
+	"R-Vehicle-Engine05", "R-Vehicle-Metals05", "R-Cyborg-Metals05",
 	"R-Wpn-Cannon-Accuracy02", "R-Wpn-Cannon-Damage05", "R-Wpn-Cannon-ROF02",
 	"R-Wpn-Flamer-Damage06", "R-Wpn-Flamer-ROF03", "R-Wpn-MG-Damage07",
-	"R-Wpn-MG-ROF03", "R-Wpn-Mortar-Acc02", "R-Wpn-Mortar-Damage06",
-	"R-Wpn-Mortar-ROF03", "R-Wpn-Rocket-Accuracy02", "R-Wpn-Rocket-Damage06",
+	"R-Wpn-MG-ROF03", "R-Wpn-Mortar-Acc03", "R-Wpn-Mortar-Damage06",
+	"R-Wpn-Mortar-ROF04", "R-Wpn-Rocket-Accuracy02", "R-Wpn-Rocket-Damage06",
 	"R-Wpn-Rocket-ROF03", "R-Wpn-RocketSlow-Accuracy03", "R-Wpn-RocketSlow-Damage05",
 	"R-Sys-Sensor-Upgrade01", "R-Wpn-RocketSlow-ROF02", "R-Wpn-Howitzer-ROF02",
 	"R-Wpn-Howitzer-Damage08", "R-Cyborg-Armor-Heat01", "R-Vehicle-Armor-Heat01",
 	"R-Wpn-Bomb-Damage02", "R-Wpn-AAGun-Damage03", "R-Wpn-AAGun-ROF03",
 	"R-Wpn-AAGun-Accuracy02", "R-Wpn-Howitzer-Accuracy01", "R-Struc-VTOLPad-Upgrade03",
 ];
+const mis_collectiveResClassic = [
+	"R-Defense-WallUpgrade05", "R-Struc-Materials05", "R-Struc-Factory-Upgrade05",
+	"R-Struc-VTOLPad-Upgrade03", "R-Vehicle-Engine05", "R-Vehicle-Metals05",
+	"R-Cyborg-Metals05", "R-Vehicle-Armor-Heat02", "R-Cyborg-Armor-Heat02",
+	"R-Sys-Engineering02", "R-Wpn-Cannon-Accuracy02", "R-Wpn-Cannon-Damage05",
+	"R-Wpn-Cannon-ROF03", "R-Wpn-Flamer-Damage06", "R-Wpn-Flamer-ROF03",
+	"R-Wpn-Howitzer-Accuracy02", "R-Wpn-Howitzer-Damage02", "R-Sys-Sensor-Upgrade01",
+	"R-Wpn-MG-Damage07", "R-Wpn-MG-ROF03", "R-Wpn-Mortar-Acc02", "R-Wpn-Mortar-Damage06",
+	"R-Wpn-Mortar-ROF03", "R-Wpn-Rocket-Accuracy02", "R-Wpn-Rocket-Damage06",
+	"R-Wpn-Rocket-ROF03", "R-Wpn-RocketSlow-Accuracy03", "R-Wpn-RocketSlow-Damage06",
+	"R-Wpn-RocketSlow-ROF03"
+];
+const mis_vtolAppearPositions = ["insaneVtolAppearPos1", "insaneVtolAppearPos2", "insaneVtolAppearPos3"];
 
 function camEnemyBaseDetected_COMainBase()
 {
@@ -27,6 +40,15 @@ function camEnemyBaseDetected_COMainBase()
 	camEnableFactory("COCyborgFactory-b2");
 	camEnableFactory("COHeavyFactory-b2R");
 }
+
+camAreaEvent("vtolRemoveZone", function(droid)
+{
+	if ((droid.player !== CAM_HUMAN_PLAYER) && camVtolCanDisappear(droid))
+	{
+		camSafeRemoveObject(droid, false);
+	}
+	resetLabel("vtolRemoveZone", CAM_THE_COLLECTIVE);
+});
 
 camAreaEvent("factoryTriggerWest", function(droid)
 {
@@ -46,7 +68,7 @@ function camEnemyBaseEliminated_COUplinkBase()
 //Group together attack droids in this base that are not already in a group
 function camEnemyBaseDetected_COMediumBase()
 {
-	var droids = enumArea("mediumBaseCleanup", THE_COLLECTIVE, false).filter((obj) => (
+	const droids = enumArea("mediumBaseCleanup", CAM_THE_COLLECTIVE, false).filter((obj) => (
 		obj.type === DROID && obj.group === null && obj.canHitGround
 	));
 
@@ -57,15 +79,15 @@ function camEnemyBaseDetected_COMediumBase()
 
 function truckDefense()
 {
-	if (enumDroid(THE_COLLECTIVE, DROID_CONSTRUCT).length === 0)
+	if (enumDroid(CAM_THE_COLLECTIVE, DROID_CONSTRUCT).length === 0)
 	{
 		removeTimer("truckDefense");
 		return;
 	}
 
-	var list = ["Emplacement-Howitzer105", "Emplacement-Rocket06-IDF", "Sys-CB-Tower01", "Emplacement-Howitzer105", "Emplacement-Rocket06-IDF", "Sys-SensoTower02"];
-	camQueueBuilding(THE_COLLECTIVE, list[camRand(list.length)], camMakePos("buildPos1"));
-	camQueueBuilding(THE_COLLECTIVE, list[camRand(list.length)], camMakePos("buildPos2"));
+	const list = ["Emplacement-Howitzer105", "Emplacement-Rocket06-IDF", "Sys-CB-Tower01", "Emplacement-Howitzer105", "Emplacement-Rocket06-IDF", "Sys-SensoTower02"];
+	camQueueBuilding(CAM_THE_COLLECTIVE, list[camRand(list.length)], camMakePos("buildPos1"));
+	camQueueBuilding(CAM_THE_COLLECTIVE, list[camRand(list.length)], camMakePos("buildPos2"));
 }
 
 function southEastAttack()
@@ -109,54 +131,130 @@ function enableTimeBasedFactories()
 	camEnableFactory("COHeavyFactory-b2L");
 }
 
+function insaneWave2()
+{
+	const list = [cTempl.colhvat, cTempl.colhvat];
+	const ext = {limit: [2, 2], alternate: true, altIdx: 0};
+	camSetVtolData(CAM_THE_COLLECTIVE, mis_vtolAppearPositions, "vtolRemoveZone", list, camMinutesToMilliseconds(3.5), CAM_REINFORCE_CONDITION_ARTIFACTS, ext);
+}
+
+function insaneWave3()
+{
+	const list = [cTempl.commorv, cTempl.comhvcv];
+	const ext = {limit: [2, 4], alternate: true, altIdx: 0};
+	camSetVtolData(CAM_THE_COLLECTIVE, mis_vtolAppearPositions, "vtolRemoveZone", list, camMinutesToMilliseconds(3.5), CAM_REINFORCE_CONDITION_ARTIFACTS, ext);
+}
+
+function insaneVtolAttack()
+{
+	if (camClassicMode())
+	{
+		const list = [cTempl.commorvt, cTempl.commorv, cTempl.colhvat];
+		const ext = {limit: [5, 5, 4], alternate: true, altIdx: 0};
+		camSetVtolData(CAM_THE_COLLECTIVE, mis_vtolAppearPositions, "vtolRemoveZone", list, camMinutesToMilliseconds(3.5), CAM_REINFORCE_CONDITION_ARTIFACTS, ext);
+	}
+	else
+	{
+		const list = [cTempl.commorvt, cTempl.commorvt];
+		const ext = {limit: [2, 2], alternate: true, altIdx: 0};
+		camSetVtolData(CAM_THE_COLLECTIVE, mis_vtolAppearPositions, "vtolRemoveZone", list, camMinutesToMilliseconds(3.5), CAM_REINFORCE_CONDITION_ARTIFACTS, ext);
+		queue("insaneWave2", camChangeOnDiff(camSecondsToMilliseconds(30)));
+		queue("insaneWave3", camChangeOnDiff(camSecondsToMilliseconds(60)));
+	}
+}
+
+function insaneReinforcementSpawn()
+{
+	const units = {units: [cTempl.comltath, cTempl.cohact, cTempl.comrotm, cTempl.comrotm], appended: cTempl.comsensh};
+	const limits = {minimum: 6, maxRandom: 4};
+	const location = ["insaneSouthEastSpawn", "insaneWestSpawn", "insaneNorthSpawn"];
+	camSendGenericSpawn(CAM_REINFORCE_GROUND, CAM_THE_COLLECTIVE, CAM_REINFORCE_CONDITION_ARTIFACTS, location, units, limits.minimum, limits.maxRandom);
+}
+
+function insaneRemoveExtraVtolPads()
+{
+	const objects = enumArea("insaneExtraVtolPadArea", CAM_THE_COLLECTIVE, false);
+
+	for (let i = 0, len = objects.length; i < len; ++i)
+	{
+		const obj = objects[i];
+
+		if (obj.type === STRUCTURE && obj.stattype === REARM_PAD)
+		{
+			camSafeRemoveObject(obj, false);
+		}
+	}
+}
+
 function eventStartLevel()
 {
-	camSetStandardWinLossConditions(CAM_VICTORY_OFFWORLD, "SUB_2_7S", {
+	camSetStandardWinLossConditions(CAM_VICTORY_OFFWORLD, cam_levels.beta9.pre, {
 		area: "RTLZ",
 		message: "C26_LZ",
 		reinforcements: camMinutesToSeconds(3)
 	});
 
-	var startpos = getObject("startPosition");
-	var lz = getObject("landingZone"); //player lz
-	var tent = getObject("transporterEntry");
-	var text = getObject("transporterExit");
-	centreView(startpos.x, startpos.y);
+	const startPos = getObject("startPosition");
+	const lz = getObject("landingZone"); //player lz
+	const tEnt = getObject("transporterEntry");
+	const tExt = getObject("transporterExit");
+	centreView(startPos.x, startPos.y);
 	setNoGoArea(lz.x, lz.y, lz.x2, lz.y2, CAM_HUMAN_PLAYER);
-	startTransporterEntry(tent.x, tent.y, CAM_HUMAN_PLAYER);
-	setTransporterExit(text.x, text.y, CAM_HUMAN_PLAYER);
+	startTransporterEntry(tEnt.x, tEnt.y, CAM_HUMAN_PLAYER);
+	setTransporterExit(tExt.x, tExt.y, CAM_HUMAN_PLAYER);
 
-	var enemyLz = getObject("COLandingZone");
-	setNoGoArea(enemyLz.x, enemyLz.y, enemyLz.x2, enemyLz.y2, THE_COLLECTIVE);
+	if (camClassicMode())
+	{
+		camClassicResearch(mis_collectiveResClassic, CAM_THE_COLLECTIVE);
 
-	camSetArtifacts({
-		"COCyborgFactory-Arti": { tech: "R-Wpn-Rocket07-Tank-Killer" },
-		"COCommandCenter": { tech: "R-Wpn-Mortar3" },
-		"uplink": { tech: "R-Sys-VTOLCBS-Tower01" },
-		"COMediumFactory": { tech: "R-Wpn-Cannon4AMk1" },
-		"COWhirlwindSite": { tech: "R-Wpn-AAGun04" },
-	});
+		camSetArtifacts({
+			"COCyborgFactory-Arti": { tech: "R-Wpn-Rocket07-Tank-Killer" },
+			"COCommandCenter": { tech: "R-Wpn-Mortar3" },
+			"uplink": { tech: "R-Sys-VTOLCBS-Tower01" },
+		});
+	}
+	else
+	{
+		camCompleteRequiredResearch(mis_collectiveRes, CAM_THE_COLLECTIVE);
 
-	camCompleteRequiredResearch(COLLECTIVE_RES, THE_COLLECTIVE);
+		camUpgradeOnMapTemplates(cTempl.npcybf, cTempl.cocybth, CAM_THE_COLLECTIVE);
+		camUpgradeOnMapTemplates(cTempl.npcybc, cTempl.cocybsn, CAM_THE_COLLECTIVE);
+		camUpgradeOnMapTemplates(cTempl.npcybr, cTempl.cocybtk, CAM_THE_COLLECTIVE);
+		camUpgradeOnMapTemplates(cTempl.npcybm, cTempl.cocybag, CAM_THE_COLLECTIVE);
+		camUpgradeOnMapTemplates(cTempl.colagv, cTempl.colhvat, CAM_THE_COLLECTIVE);
+
+		camSetArtifacts({
+			"COCyborgFactory-Arti": { tech: "R-Wpn-Rocket07-Tank-Killer" },
+			"COCommandCenter": { tech: "R-Wpn-Mortar-ROF04" },
+			"uplink": { tech: "R-Sys-VTOLCBS-Tower01" },
+			"COMediumFactory": { tech: "R-Wpn-Cannon4AMk1" },
+			"COWhirlwindSite": { tech: "R-Wpn-AAGun04" },
+		});
+	}
+
+	if (!camAllowInsaneSpawns())
+	{
+		insaneRemoveExtraVtolPads();
+	}
 
 	camSetEnemyBases({
 		"COUplinkBase": {
 			cleanup: "uplinkBaseCleanup",
 			detectMsg: "C26_BASE1",
-			detectSnd: "pcv379.ogg",
-			eliminateSnd: "pcv394.ogg",
+			detectSnd: cam_sounds.baseDetection.enemyBaseDetected,
+			eliminateSnd: cam_sounds.baseElimination.enemyBaseEradicated,
 		},
 		"COMainBase": {
 			cleanup: "mainBaseCleanup",
 			detectMsg: "C26_BASE2",
-			detectSnd: "pcv379.ogg",
-			eliminateSnd: "pcv394.ogg",
+			detectSnd: cam_sounds.baseDetection.enemyBaseDetected,
+			eliminateSnd: cam_sounds.baseElimination.enemyBaseEradicated,
 		},
 		"COMediumBase": {
 			cleanup: "mediumBaseCleanup",
 			detectMsg: "C26_BASE3",
-			detectSnd: "pcv379.ogg",
-			eliminateSnd: "pcv394.ogg",
+			detectSnd: cam_sounds.baseDetection.enemyBaseDetected,
+			eliminateSnd: cam_sounds.baseElimination.enemyBaseEradicated,
 		},
 	});
 
@@ -171,7 +269,7 @@ function eventStartLevel()
 				repair: 40,
 				count: -1,
 			},
-			templates: [cTempl.npcybc, cTempl.npcybf, cTempl.cocybag, cTempl.npcybr]
+			templates: (!camClassicMode()) ? [cTempl.cocybsn, cTempl.cocybth, cTempl.cocybag, cTempl.cocybtk] : [cTempl.npcybc, cTempl.npcybf, cTempl.cocybag, cTempl.npcybr]
 		},
 		"COCyborgFactory-b1": {
 			assembly: "COCyborgFactory-b1Assembly",
@@ -183,7 +281,7 @@ function eventStartLevel()
 				repair: 40,
 				count: -1,
 			},
-			templates: [cTempl.cocybag, cTempl.npcybr]
+			templates: (!camClassicMode()) ? [cTempl.cocybag, cTempl.cocybtk] : [cTempl.cocybag, cTempl.npcybr]
 		},
 		"COCyborgFactory-b2": {
 			assembly: "COCyborgFactory-b2Assembly",
@@ -195,7 +293,7 @@ function eventStartLevel()
 				repair: 40,
 				count: -1,
 			},
-			templates: [cTempl.npcybc, cTempl.npcybf]
+			templates: (!camClassicMode()) ? [cTempl.cocybsn, cTempl.cocybth] : [cTempl.npcybc, cTempl.npcybf]
 		},
 		"COHeavyFactory-b2L": {
 			assembly: "COHeavyFactory-b2LAssembly",
@@ -239,10 +337,15 @@ function eventStartLevel()
 
 	if (difficulty >= HARD)
 	{
-		addDroid(THE_COLLECTIVE, 26, 27, "Truck Panther Tracks", "Body6SUPP", "tracked01", "", "", "Spade1Mk1");
-		addDroid(THE_COLLECTIVE, 42, 4, "Truck Panther Tracks", "Body6SUPP", "tracked01", "", "", "Spade1Mk1");
-		camManageTrucks(THE_COLLECTIVE);
+		addDroid(CAM_THE_COLLECTIVE, 26, 27, "Truck Panther Tracks", tBody.tank.panther, tProp.tank.tracks, "", "", tConstruct.truck);
+		addDroid(CAM_THE_COLLECTIVE, 42, 4, "Truck Panther Tracks", tBody.tank.panther, tProp.tank.tracks, "", "", tConstruct.truck);
+		camManageTrucks(CAM_THE_COLLECTIVE);
 		setTimer("truckDefense", camChangeOnDiff(camMinutesToMilliseconds(6)));
+	}
+	if (camAllowInsaneSpawns())
+	{
+		queue("insaneVtolAttack", camMinutesToMilliseconds(7));
+		setTimer("insaneReinforcementSpawn", camMinutesToMilliseconds(4.5));
 	}
 
 	queue("northWestAttack", camChangeOnDiff(camMinutesToMilliseconds(3)));

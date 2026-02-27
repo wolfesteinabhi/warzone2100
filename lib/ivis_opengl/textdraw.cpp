@@ -78,7 +78,7 @@ static float font_colour[4] = {1.f, 1.f, 1.f, 1.f};
 # define USE_NEW_FRIBIDI_API (FRIBIDI_MAJOR_VERSION >= 1)
 #endif // defined(WZ_FRIBIDI_ENABLED)
 
-#include "3rdparty/LRUCache11.hpp"
+#include <LRUCache11/LRUCache11.hpp>
 
 float _horizScaleFactor = 1.0f;
 float _vertScaleFactor = 1.0f;
@@ -630,10 +630,11 @@ struct TextShaper
 	struct HarfbuzzPosition
 	{
 		hb_codepoint_t codepoint;
+		uint32_t cluster;
 		Vector2i penPosition;
 		FTFace& face;
 
-		HarfbuzzPosition(hb_codepoint_t c, Vector2i &&p, FTFace& f) : codepoint(c), penPosition(p), face(f) {}
+		HarfbuzzPosition(hb_codepoint_t c, uint32_t cl, Vector2i &&p, FTFace& f) : codepoint(c), cluster(cl), penPosition(p), face(f) {}
 	};
 
 	struct ShapingResult
@@ -648,6 +649,75 @@ struct TextShaper
 
 	~TextShaper()
 	{ }
+
+	// Returns the maximum text run length (in WzString characters) that fits within a max width (supplied *IN PIXELS*)
+	uint32_t getTextMaxLenForWidth(const WzString& text, iV_fonts fontID, uint32_t maxWidthInPixels, bool rightToLeft)
+	{
+		std::vector<uint32_t> codePoints = text.toUtf32();
+		auto shapingResult = shapeText(codePoints, fontID);
+
+		if (shapingResult.glyphes.empty())
+		{
+			return 0;
+		}
+
+		int32_t min_x = std::numeric_limits<int32_t>::max();
+		int32_t max_x = std::numeric_limits<int32_t>::min();
+		int32_t min_y = std::numeric_limits<int32_t>::max();
+		int32_t max_y = std::numeric_limits<int32_t>::min();
+
+		size_t glyphIdx = (!rightToLeft) ? 0 : shapingResult.glyphes.size();
+		size_t glyphIdxEnd = (!rightToLeft) ? shapingResult.glyphes.size() : 0;
+		while (glyphIdx != glyphIdxEnd)
+		{
+			if (rightToLeft) { --glyphIdx; }
+
+			auto& g = shapingResult.glyphes[glyphIdx];
+			GlyphMetrics glyph = glyphCache->getGlyphMetrics(g.face, g.codepoint, g.penPosition % 64);
+			int32_t x0 = g.penPosition.x / 64 + glyph.bearing_x;
+			int32_t y0 = g.penPosition.y / 64 - glyph.bearing_y;
+
+			min_x = std::min(x0, min_x);
+			max_x = std::max(static_cast<int32_t>(x0 + glyph.width), max_x);
+			min_y = std::min(y0, min_y);
+			max_y = std::max(static_cast<int32_t>(y0 + glyph.height), max_y);
+
+			uint32_t texture_width = max_x - min_x + 1;
+			if (texture_width > maxWidthInPixels)
+			{
+				break;
+			}
+
+			if (!rightToLeft) { ++glyphIdx; }
+		}
+
+		if (glyphIdx < shapingResult.glyphes.size())
+		{
+			if (glyphIdx == 0)
+			{
+				if (!rightToLeft)
+				{
+					uint32_t texture_width = max_x - min_x + 1;
+					if (texture_width > maxWidthInPixels) // first glyph doesn't even fit
+					{
+						return 0;
+					}
+				}
+				else
+				{
+					// whole thing fits
+					return text.length();
+				}
+			}
+
+			// must truncate to fit
+			// we have a cluster index which does not fit, which is an index into the codepoints
+			auto truncatedCluster = shapingResult.glyphes[glyphIdx].cluster;
+			return truncatedCluster;
+		}
+
+		return text.length();
+	}
 
 	// Returns the text width and height *IN PIXELS*
 	TextLayoutMetrics getTextMetrics(const WzString& text, iV_fonts fontID)
@@ -790,14 +860,19 @@ struct TextShaper
 		);
 	}
 
-	ShapingResult shapeText(const WzString& text, iV_fonts fontID)
+	struct SplitTextRunsResult
 	{
-		/* Fribidi assumes that the text is encoded in UTF-32, so we have to
-		   convert from UTF-8 to UTF-32, assuming that the string is indeed in UTF-8.*/
-		std::vector<uint32_t> codePoints = text.toUtf32();
+		std::vector<TextRun> textRuns;
+#if defined(WZ_FRIBIDI_ENABLED)
+		FriBidiParType baseDirection = FRIBIDI_PAR_LTR;
+#endif
+	};
+
+	SplitTextRunsResult splitTextRuns(const std::vector<uint32_t>& codePoints, iV_fonts fontID)
+	{
 		if (codePoints.empty())
 		{
-			return ShapingResult();
+			return {};
 		}
 		int codePoints_size = static_cast<int>(codePoints.size());
 #if SIZE_MAX > INT32_MAX
@@ -846,7 +921,7 @@ struct TextShaper
 # endif // USE_NEW_FRIBIDI_API
 
 #endif // defined(WZ_FRIBIDI_ENABLED)
-		
+
 		/* Fill the array of scripts with scripts of each character */
 		hb_unicode_funcs_t* funcs = hb_unicode_funcs_get_default();
 		for (int i = 0; i < codePoints_size; ++i)
@@ -884,9 +959,11 @@ struct TextShaper
 
 		// Step 4: Create the different runs
 
+		SplitTextRunsResult result;
+
 		hb_language_t language = hb_language_get_default(); // Future TODO: We could probably be smarter about this, but this replicates the behavior of hb_buffer_guess_segment_properties()
 
-		std::vector<TextRun> textRuns;
+		std::vector<TextRun>& textRuns = result.textRuns;
 		hb_script_t lastScript = scripts[0];
 		auto lastLevel = levels[0];
 		int lastRunStart = 0; // where the last run started
@@ -928,6 +1005,33 @@ struct TextShaper
 			}
 		}
 
+#if defined(WZ_FRIBIDI_ENABLED)
+		result.baseDirection = baseDirection;
+#endif
+		return result;
+	}
+
+	SplitTextRunsResult splitTextRuns(const WzString& text, iV_fonts fontID)
+	{
+		/* Fribidi assumes that the text is encoded in UTF-32, so we have to
+		 convert from UTF-8 to UTF-32, assuming that the string is indeed in UTF-8.*/
+		std::vector<uint32_t> codePoints = text.toUtf32();
+
+		return splitTextRuns(codePoints, fontID);
+	}
+
+	ShapingResult shapeText(const std::vector<uint32_t>& codePoints, iV_fonts fontID)
+	{
+		if (codePoints.empty())
+		{
+			return ShapingResult();
+		}
+
+		auto textRunResult = splitTextRuns(codePoints, fontID);
+		auto& textRuns = textRunResult.textRuns;
+#if defined(WZ_FRIBIDI_ENABLED)
+		FriBidiParType baseDirection = textRunResult.baseDirection;
+#endif
 
 		// Step 6: Shape each run using harfbuzz.
 
@@ -946,7 +1050,8 @@ struct TextShaper
 			{
 				hb_glyph_position_t& current_glyphPos = run.glyphPositions[glyphIndex];
 
-				shapingResult.glyphes.emplace_back(run.glyphInfos[glyphIndex].codepoint, Vector2i(x + current_glyphPos.x_offset, y + current_glyphPos.y_offset), *run.fontFace);
+				uint32_t clusterIdx = (run.glyphInfos[glyphIndex].cluster + run.startOffset);
+				shapingResult.glyphes.emplace_back(run.glyphInfos[glyphIndex].codepoint, clusterIdx, Vector2i(x + current_glyphPos.x_offset, y + current_glyphPos.y_offset), *run.fontFace);
 
 				x += run.glyphPositions[glyphIndex].x_advance;
 				y += run.glyphPositions[glyphIndex].y_advance;
@@ -975,6 +1080,15 @@ struct TextShaper
 		return shapingResult;
 	}
 
+	ShapingResult shapeText(const WzString& text, iV_fonts fontID)
+	{
+		/* Fribidi assumes that the text is encoded in UTF-32, so we have to
+		 convert from UTF-8 to UTF-32, assuming that the string is indeed in UTF-8.*/
+		std::vector<uint32_t> codePoints = text.toUtf32();
+
+		return shapeText(codePoints, fontID);
+	}
+
 	inline void shapeHarfbuzz(TextRun& run, FTFace& face)
 	{
 		run.buffer = hb_buffer_create();
@@ -986,7 +1100,7 @@ struct TextShaper
                             run.endOffset - run.startOffset);
 		hb_buffer_set_flags(run.buffer, (hb_buffer_flags_t)(HB_BUFFER_FLAG_BOT | HB_BUFFER_FLAG_EOT));
 		std::array<hb_feature_t, 3> features = { {HBFeature::KerningOn, HBFeature::LigatureOn, HBFeature::CligOn} };
-        
+
 		hb_shape(face.m_font, run.buffer, features.data(), static_cast<unsigned int>(features.size()));
 
 		run.glyphInfos = hb_buffer_get_glyph_infos(run.buffer, &run.glyphCount);
@@ -1067,16 +1181,18 @@ static bool inline initializeCJKFontsIfNeeded()
 	uint32_t horizDPI = static_cast<uint32_t>(DEFAULT_DPI * _horizScaleFactor);
 	uint32_t vertDPI = static_cast<uint32_t>(DEFAULT_DPI * _vertScaleFactor);
 	try {
-		cjkFonts->regular = std::unique_ptr<FTFace>(new FTFace(getGlobalFTlib().lib, CJK_FONT_PATH, 12 * 64, horizDPI, vertDPI, 400));
-		cjkFonts->regularBold = std::unique_ptr<FTFace>(new FTFace(getGlobalFTlib().lib, CJK_FONT_PATH, 12 * 64, horizDPI, vertDPI, 700));
-		cjkFonts->bold = std::unique_ptr<FTFace>(new FTFace(getGlobalFTlib().lib, CJK_FONT_PATH, 21 * 64, horizDPI, vertDPI, 400));
-		cjkFonts->medium = std::unique_ptr<FTFace>(new FTFace(getGlobalFTlib().lib, CJK_FONT_PATH, 16 * 64, horizDPI, vertDPI, 400));
-		cjkFonts->mediumBold = std::unique_ptr<FTFace>(new FTFace(getGlobalFTlib().lib, CJK_FONT_PATH, 16 * 64, horizDPI, vertDPI, 700));
-		cjkFonts->small = std::unique_ptr<FTFace>(new FTFace(getGlobalFTlib().lib, CJK_FONT_PATH, 9 * 64, horizDPI, vertDPI, 400));
-		cjkFonts->smallBold = std::unique_ptr<FTFace>(new FTFace(getGlobalFTlib().lib, CJK_FONT_PATH, 9 * 64, horizDPI, vertDPI, 700));
+		cjkFonts->regular = std::make_unique<FTFace>(getGlobalFTlib().lib, CJK_FONT_PATH, 12 * 64, horizDPI, vertDPI, 400);
+		cjkFonts->regularBold = std::make_unique<FTFace>(getGlobalFTlib().lib, CJK_FONT_PATH, 12 * 64, horizDPI, vertDPI, 700);
+		cjkFonts->bold = std::make_unique<FTFace>(getGlobalFTlib().lib, CJK_FONT_PATH, 21 * 64, horizDPI, vertDPI, 400);
+		cjkFonts->medium = std::make_unique<FTFace>(getGlobalFTlib().lib, CJK_FONT_PATH, 16 * 64, horizDPI, vertDPI, 400);
+		cjkFonts->mediumBold = std::make_unique<FTFace>(getGlobalFTlib().lib, CJK_FONT_PATH, 16 * 64, horizDPI, vertDPI, 700);
+		cjkFonts->small = std::make_unique<FTFace>(getGlobalFTlib().lib, CJK_FONT_PATH, 9 * 64, horizDPI, vertDPI, 400);
+		cjkFonts->smallBold = std::make_unique<FTFace>(getGlobalFTlib().lib, CJK_FONT_PATH, 9 * 64, horizDPI, vertDPI, 700);
 	}
 	catch (const std::exception &e) {
+#if !defined(__EMSCRIPTEN__)
 		debug(LOG_ERROR, "Failed to load font:\n%s", e.what());
+#endif
 		delete cjkFonts;
 		cjkFonts = nullptr;
 		failedToLoadCJKFonts = true;
@@ -1175,13 +1291,13 @@ void iV_TextInit(unsigned int horizScalePercentage, unsigned int vertScalePercen
 	}
 
 	try {
-		baseFonts->regular = std::unique_ptr<FTFace>(new FTFace(getGlobalFTlib().lib, "fonts/DejaVuSans.ttf", 12 * 64, horizDPI, vertDPI));
-		baseFonts->regularBold = std::unique_ptr<FTFace>(new FTFace(getGlobalFTlib().lib, "fonts/DejaVuSans-Bold.ttf", 12 * 64, horizDPI, vertDPI));
-		baseFonts->bold = std::unique_ptr<FTFace>(new FTFace(getGlobalFTlib().lib, "fonts/DejaVuSans-Bold.ttf", 21 * 64, horizDPI, vertDPI));
-		baseFonts->medium = std::unique_ptr<FTFace>(new FTFace(getGlobalFTlib().lib, "fonts/DejaVuSans.ttf", 16 * 64, horizDPI, vertDPI));
-		baseFonts->mediumBold = std::unique_ptr<FTFace>(new FTFace(getGlobalFTlib().lib, "fonts/DejaVuSans-Bold.ttf", 16 * 64, horizDPI, vertDPI));
-		baseFonts->small = std::unique_ptr<FTFace>(new FTFace(getGlobalFTlib().lib, "fonts/DejaVuSans.ttf", 9 * 64, horizDPI, vertDPI));
-		baseFonts->smallBold = std::unique_ptr<FTFace>(new FTFace(getGlobalFTlib().lib, "fonts/DejaVuSans-Bold.ttf", 9 * 64, horizDPI, vertDPI));
+		baseFonts->regular = std::make_unique<FTFace>(getGlobalFTlib().lib, "fonts/DejaVuSans.ttf", 12 * 64, horizDPI, vertDPI);
+		baseFonts->regularBold = std::make_unique<FTFace>(getGlobalFTlib().lib, "fonts/DejaVuSans-Bold.ttf", 12 * 64, horizDPI, vertDPI);
+		baseFonts->bold = std::make_unique<FTFace>(getGlobalFTlib().lib, "fonts/DejaVuSans-Bold.ttf", 21 * 64, horizDPI, vertDPI);
+		baseFonts->medium = std::make_unique<FTFace>(getGlobalFTlib().lib, "fonts/DejaVuSans.ttf", 16 * 64, horizDPI, vertDPI);
+		baseFonts->mediumBold = std::make_unique<FTFace>(getGlobalFTlib().lib, "fonts/DejaVuSans-Bold.ttf", 16 * 64, horizDPI, vertDPI);
+		baseFonts->small = std::make_unique<FTFace>(getGlobalFTlib().lib, "fonts/DejaVuSans.ttf", 9 * 64, horizDPI, vertDPI);
+		baseFonts->smallBold = std::make_unique<FTFace>(getGlobalFTlib().lib, "fonts/DejaVuSans-Bold.ttf", 9 * 64, horizDPI, vertDPI);
 	}
 	catch (const std::exception &e) {
 		// Log lots of details:
@@ -1203,7 +1319,9 @@ void iV_TextInit(unsigned int horizScalePercentage, unsigned int vertScalePercen
 	// (since it's only loaded on-demand, and thus might fail with a fatal error later if missing)
 	if (PHYSFS_exists(CJK_FONT_PATH) == 0)
 	{
+#if !defined(__EMSCRIPTEN__)
 		debug(LOG_FATAL, "Missing data file: %s", CJK_FONT_PATH);
+#endif
 	}
 
 	m_unicode_funcs_hb = hb_unicode_funcs_get_default();
@@ -1256,9 +1374,9 @@ int iV_GetEllipsisWidth(iV_fonts fontID)
 	return iV_Internal_GetEllipsis(fontID).width();
 }
 
-void iV_DrawEllipsis(iV_fonts fontID, Vector2f position, PIELIGHT colour)
+void iV_DrawEllipsis(iV_fonts fontID, Vector2f position, PIELIGHT colour, float rotation /*= 0.0f*/)
 {
-	iV_Internal_GetEllipsis(fontID).render(position, colour);
+	iV_Internal_GetEllipsis(fontID).render(position, colour, rotation);
 }
 
 unsigned int width_pixelsToPoints(unsigned int widthInPixels)
@@ -1277,6 +1395,16 @@ unsigned int iV_GetTextWidth(const WzString& string, iV_fonts fontID)
 	return width_pixelsToPoints(metrics.width);
 }
 
+static float maxUint32Float = std::nextafterf(static_cast<float>(std::numeric_limits<uint32_t>::max()), 0.0f);
+
+// Note: Is intended to be used *only* with text runs produced by iV_SplitTextParagraphIntoRuns() - rightToLeft must be properly supplied
+size_t iV_GetMaxTextRunLenForWidth(const WzString& textRun, iV_fonts fontID, uint32_t maxWidthInPoints, bool rightToLeft)
+{
+	float scaledWidthInPixels = floorf((float)maxWidthInPoints * _horizScaleFactor);
+	uint32_t maxWidthInPixels = (scaledWidthInPixels <= maxUint32Float) ? static_cast<uint32_t>(scaledWidthInPixels) : std::numeric_limits<uint32_t>::max();
+	return getShaper().getTextMaxLenForWidth(textRun, fontID, maxWidthInPixels, rightToLeft);
+}
+
 // Returns the counted text width *in points*
 unsigned int iV_GetCountedTextWidth(const char *string, size_t string_length, iV_fonts fontID)
 {
@@ -1288,6 +1416,32 @@ unsigned int iV_GetTextHeight(const char* string, iV_fonts fontID)
 {
 	TextLayoutMetrics metrics = getShaper().getTextMetrics(string, fontID);
 	return height_pixelsToPoints(metrics.height);
+}
+
+std::vector<WzTextRun> iV_SplitTextParagraphIntoRuns(const WzString& string, iV_fonts fontID)
+{
+	auto internalResult = getShaper().splitTextRuns(string, fontID);
+	std::vector<WzTextRun> result;
+
+	auto processTextRun = [&](const TextRun& run) {
+		result.push_back({static_cast<size_t>(run.startOffset), static_cast<size_t>(run.endOffset), run.direction == HB_DIRECTION_RTL});
+	};
+
+#if defined(WZ_FRIBIDI_ENABLED)
+	// The direction of the loop must change depending on the base direction
+	if (!(FRIBIDI_IS_RTL(internalResult.baseDirection)))
+	{
+#endif // defined(WZ_FRIBIDI_ENABLED)
+		std::for_each(internalResult.textRuns.cbegin(), internalResult.textRuns.cend(), processTextRun);
+#if defined(WZ_FRIBIDI_ENABLED)
+	}
+	else
+	{
+		std::for_each(internalResult.textRuns.crbegin(), internalResult.textRuns.crend(), processTextRun);
+	}
+#endif // defined(WZ_FRIBIDI_ENABLED)
+
+	return result;
 }
 
 // Returns the character width *in points*
@@ -1552,10 +1706,10 @@ void iV_DrawTextRotated(const char* string, float XPos, float YPos, float rotati
 	}
 
 	PIELIGHT color;
-	color.vector[0] = static_cast<UBYTE>(font_colour[0] * 255.f);
-	color.vector[1] = static_cast<UBYTE>(font_colour[1] * 255.f);
-	color.vector[2] = static_cast<UBYTE>(font_colour[2] * 255.f);
-	color.vector[3] = static_cast<UBYTE>(font_colour[3] * 255.f);
+	color.byte.r = static_cast<UBYTE>(font_colour[0] * 255.f);
+	color.byte.g = static_cast<UBYTE>(font_colour[1] * 255.f);
+	color.byte.b = static_cast<UBYTE>(font_colour[2] * 255.f);
+	color.byte.a = static_cast<UBYTE>(font_colour[3] * 255.f);
 
 	DrawTextResult drawResult = getShaper().drawText(string, fontID);
 
@@ -1701,6 +1855,47 @@ inline void WzText::updateCacheIfNecessary()
 	}
 }
 
+void WzText::renderClipped(Vector2f position, PIELIGHT colour, WzRect screenClippingRect, int maxWidth /*= -1*/, int maxHeight /*= -1*/)
+{
+	updateCacheIfNecessary();
+
+	if (texture == nullptr)
+	{
+		// A texture will not always be created. (For example, if the rendered text is empty.)
+		// No need to render if there's nothing to render.
+		return;
+	}
+
+	Vector2f visualOrigin(position.x, position.y + mPtsAboveBase);
+	int logicalDisplayWidth = static_cast<int>(dimensions.x / mRenderingHorizScaleFactor);
+	int logicalDisplayHeight = static_cast<int>(dimensions.y / mRenderingVertScaleFactor);
+	if (maxWidth > 0)
+	{
+		logicalDisplayWidth = std::min<int>(logicalDisplayWidth, maxWidth);
+	}
+	WzRect screenDrawRect(static_cast<int>(visualOrigin.x), static_cast<int>(visualOrigin.y), logicalDisplayWidth, logicalDisplayHeight); // screen coordinates
+	WzRect clippingRect = screenDrawRect.intersectionWith(screenClippingRect.setWidth(screenClippingRect.width() - 1).setHeight(screenClippingRect.height() - 1));
+	if (clippingRect.width() <= 0 || clippingRect.height() <= 0)
+	{
+		return;
+	}
+	clippingRect.translateBy(static_cast<int>(-visualOrigin.x), static_cast<int>(-visualOrigin.y)); // translate to 0,0 origin
+
+	WzClippingRectF clippingRectInPixels(
+		clippingRect.left() * mRenderingHorizScaleFactor,
+		clippingRect.top() * mRenderingVertScaleFactor,
+		clippingRect.width() * mRenderingHorizScaleFactor,
+		clippingRect.height() * mRenderingVertScaleFactor
+	);
+
+	Vector2f logicalDrawSize(
+		std::min(logicalDisplayWidth, clippingRect.width()),
+		std::min(logicalDisplayHeight, clippingRect.height())
+	);
+
+	iV_DrawImageTextClipped(*texture, dimensions, position + Vector2f(clippingRect.x(), clippingRect.y()), Vector2f(offsets.x / mRenderingHorizScaleFactor, offsets.y / mRenderingVertScaleFactor), logicalDrawSize, 0.f, colour, clippingRectInPixels);
+}
+
 void WzText::render(Vector2f position, PIELIGHT colour, float rotation, int maxWidth, int maxHeight)
 {
 	updateCacheIfNecessary();
@@ -1723,9 +1918,11 @@ void WzText::render(Vector2f position, PIELIGHT colour, float rotation, int maxW
 	}
 	else
 	{
-		WzRect clippingRectInPixels;
-		clippingRectInPixels.setWidth((maxWidth > 0) ? static_cast<int>((float)maxWidth * mRenderingHorizScaleFactor) : dimensions.x);
-		clippingRectInPixels.setHeight((maxHeight > 0) ? static_cast<int>((float)maxHeight * mRenderingVertScaleFactor) : dimensions.y);
+		WzClippingRectF clippingRectInPixels(
+			0.f, 0.f,
+			(maxWidth > 0) ? ((float)maxWidth * mRenderingHorizScaleFactor) : dimensions.x,
+			(maxHeight > 0) ? ((float)maxHeight * mRenderingVertScaleFactor) : dimensions.y
+		);
 		iV_DrawImageTextClipped(*texture, dimensions, position, Vector2f(offsets.x / mRenderingHorizScaleFactor, offsets.y / mRenderingVertScaleFactor), Vector2f((maxWidth > 0) ? maxWidth : dimensions.x / mRenderingHorizScaleFactor, (maxHeight > 0) ? maxHeight : dimensions.y / mRenderingVertScaleFactor), rotation, colour, clippingRectInPixels);
 	}
 }

@@ -28,6 +28,7 @@
 
 #import <AppKit/AppKit.h>
 #import <ApplicationServices/ApplicationServices.h>
+#import <TargetConditionals.h>
 
 static inline NSString * _Nonnull nsstringify(const char *str)
 {
@@ -37,29 +38,6 @@ static inline NSString * _Nonnull nsstringify(const char *str)
         return @"stringWithUTF8String failed";
     }
 	return nsString;
-}
-
-int cocoaShowAlert(const char *message, const char *information, unsigned style,
-                   const char *buttonTitle, ...)
-{
-    NSInteger buttonID = -1;
-    @autoreleasepool {
-        NSAlert *alert = [[NSAlert alloc] init];
-        [alert setMessageText:nsstringify(message)];
-        [alert setInformativeText:nsstringify(information)];
-        [alert setAlertStyle:(NSAlertStyle)style];
-
-        va_list args;
-        va_start(args, buttonTitle);
-        const char *currentButtonTitle = buttonTitle;
-        do {
-            [alert addButtonWithTitle:nsstringify(currentButtonTitle)];
-        } while ((currentButtonTitle = va_arg(args, const char *)));
-        va_end(args);
-
-        buttonID = [alert runModal];
-    }
-    return static_cast<int>(buttonID - NSAlertFirstButtonReturn);
 }
 
 bool cocoaSelectFileInFinder(const char *filename)
@@ -169,6 +147,33 @@ bool TransformProcessState(ProcessApplicationTransformState newState)
 bool cocoaTransformToBackgroundApplication()
 {
     return TransformProcessState(kProcessTransformToBackgroundApplication);
+}
+
+bool cocoaIsRunningOnMacOSAtLeastVersion(unsigned major, unsigned minor)
+{
+# if TARGET_OS_MAC
+	@autoreleasepool {
+		NSOperatingSystemVersion targetMin = {
+			.majorVersion = major,
+			.minorVersion = minor,
+			.patchVersion = 0
+		};
+
+//		if (@available(macOS 10.10, *)) {	// "@available" is only available on Xcode 9+
+		if (floor(NSAppKitVersionNumber) >= NSAppKitVersionNumber10_10) { // alternative to @available
+			if ([[NSProcessInfo processInfo] isOperatingSystemAtLeastVersion:targetMin]) {
+				return true;
+			}
+		} else {
+			// macOS 10.9 and earlier require now-deprecated APIs
+			return false;
+		}
+		return false;
+	}
+#else
+	// not macOS
+	return false;
+#endif
 }
 
 #endif // WZ_OS_MAC

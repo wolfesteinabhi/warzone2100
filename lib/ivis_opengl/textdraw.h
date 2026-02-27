@@ -26,6 +26,7 @@
 
 #include "lib/framework/vector.h"
 #include "lib/framework/wzstring.h"
+#include "lib/framework/geometry.h"
 #include "gfx_api.h"
 #include "pietypes.h"
 
@@ -60,6 +61,7 @@ public:
 	void render(Vector2f position, PIELIGHT colour, float rotation = 0.0f, int maxWidth = -1, int maxHeight = -1);
 	void render(float x, float y, PIELIGHT colour, float rotation = 0.0f, int maxWidth = -1, int maxHeight = -1) { render(Vector2f{x,y}, colour, rotation, maxWidth, maxHeight); }
 	void renderOutlined(int x, int y, PIELIGHT colour, PIELIGHT outlineColour);
+	void renderClipped(Vector2f position, PIELIGHT colour, WzRect screenClippingRect, int maxWidth = -1, int maxHeight = -1);
 	int aboveBase(); // (in points)
 	int belowBase(); // (in points)
 	int lineSize(); // (in points)
@@ -135,7 +137,7 @@ void iV_TextShutdown();
 void iV_font(const char *fontName, const char *fontFace, const char *fontFaceBold);
 
 int iV_GetEllipsisWidth(iV_fonts fontID);
-void iV_DrawEllipsis(iV_fonts fontID, Vector2f position, PIELIGHT colour);
+void iV_DrawEllipsis(iV_fonts fontID, Vector2f position, PIELIGHT colour, float rotation = 0.0f);
 
 int iV_GetTextAboveBase(iV_fonts fontID);
 int iV_GetTextBelowBase(iV_fonts fontID);
@@ -148,6 +150,16 @@ unsigned int iV_GetTextHeight(const char *string, iV_fonts fontID);
 void iV_SetTextColour(PIELIGHT colour);
 
 optional<iV_fonts> iV_ShrinkFont(iV_fonts fontID);
+
+struct WzTextRun
+{
+	size_t startOffset;
+	size_t endOffset;
+	bool rightToLeft;
+};
+std::vector<WzTextRun> iV_SplitTextParagraphIntoRuns(const WzString& string, iV_fonts fontID);
+// Note: Is intended to be used *only* with text runs produced by iV_SplitTextParagraphIntoRuns() - rightToLeft must be properly supplied
+size_t iV_GetMaxTextRunLenForWidth(const WzString& textRun, iV_fonts fontID, uint32_t maxWidthInPoints, bool rightToLeft = false);
 
 /// Valid values for "Justify" argument of iV_FormatText().
 enum

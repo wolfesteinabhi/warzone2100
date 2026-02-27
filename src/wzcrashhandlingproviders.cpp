@@ -33,6 +33,9 @@
 #include "activity.h"
 #include "modding.h"
 
+#include <chrono>
+#include <thread>
+
 /* Crash-handling providers */
 
 #if defined(WZ_CRASHHANDLING_PROVIDER_SENTRY)
@@ -44,6 +47,9 @@
 # include <wz-sentry-config.h>
 # if !defined(WZ_CRASHHANDLING_PROVIDER_SENTRY_DSN)
 #  define WZ_CRASHHANDLING_PROVIDER_SENTRY_DSN ""
+# endif
+# if !defined(WZ_CRASHPAD_EXECUTABLE_NAME)
+#  error Missing WZ_CRASHPAD_EXECUTABLE_NAME
 # endif
 static bool enabledSentryProvider = false;
 # define WZ_SENTRY_MAX_BREADCRUMBS 60
@@ -78,6 +84,7 @@ static bool initCrashHandlingProvider_Sentry(const std::string& platformPrefDir_
 		sentry_options_set_debug(options, 1);
 	}
 #endif
+
 	// for the temp path, always use a subdirectory of the default platform pref dir
 	// Make sure that we have a directory separator at the end of the string
 	std::string platformPrefDir = platformPrefDir_Input;
@@ -98,18 +105,40 @@ static bool initCrashHandlingProvider_Sentry(const std::string& platformPrefDir_
 #else
 	sentry_options_set_database_path(options, crashDbPath.c_str());
 #endif
+
+	// Set the path to the crashpad handler
+	std::string appBaseDir = PHYSFS_getBaseDir();
+	if (!strEndsWith(appBaseDir, PHYSFS_getDirSeparator()))
+	{
+		appBaseDir += PHYSFS_getDirSeparator();
+	}
+	std::string crashpadHandlerPath = appBaseDir + WZ_CRASHPAD_EXECUTABLE_NAME;
+	debug(LOG_WZ, "crashpadHandlerPath: \"%s\"", crashpadHandlerPath.c_str());
+#if defined(WZ_OS_WIN)
+	// On Windows: Convert UTF-8 path to UTF-16 and call sentry_options_set_handler_pathw
+	if (!win_utf8ToUtf16(crashpadHandlerPath.c_str(), wUtf16Path))
+	{
+		debug(LOG_FATAL, "Unable to convert path string (2) to UTF16 - fatal error");
+		abort();
+	}
+	sentry_options_set_handler_pathw(options, wUtf16Path.data());
+#else
+	sentry_options_set_handler_path(options, crashpadHandlerPath.c_str());
+#endif
+
 	std::string logFileFullPath = platformPrefDir + defaultLogFilePath;
 #if defined(WZ_OS_WIN)
 	// On Windows: Convert UTF-8 path to UTF-16 and call sentry_options_add_attachmentw
 	if (!win_utf8ToUtf16(logFileFullPath.c_str(), wUtf16Path))
 	{
-		debug(LOG_FATAL, "Unable to convert path string (2) to UTF16 - fatal error");
+		debug(LOG_FATAL, "Unable to convert path string (3) to UTF16 - fatal error");
 		abort();
 	}
 	sentry_options_add_attachmentw(options, wUtf16Path.data());
 #else
 	sentry_options_add_attachment(options, logFileFullPath.c_str());
 #endif
+
 	// limit max breadcrumbs to WZ_SENTRY_MAX_BREADCRUMBS (if default exceeds it)
 	size_t maxBreadcrumbs = sentry_options_get_max_breadcrumbs(options);
 	if (maxBreadcrumbs > WZ_SENTRY_MAX_BREADCRUMBS)
@@ -437,6 +466,50 @@ bool crashHandlingProviderSetContext(const std::string& key, const nlohmann::jso
 #endif
 }
 
+bool crashHandlingProviderCaptureException(const char* type, const char* value, const std::string& description, bool captureStackTrace, bool handled, const nlohmann::json *additionalData)
+{
+#if !defined(WZ_CRASHHANDLING_PROVIDER)
+	return false;
+#elif defined(WZ_CRASHHANDLING_PROVIDER_SENTRY)
+	// Sentry crash-handling provider
+	if (!enabledSentryProvider) { return false; }
+
+	sentry_value_t event = sentry_value_new_event();
+	sentry_value_t exc = sentry_value_new_exception(type, value);
+	if (captureStackTrace)
+	{
+		sentry_value_set_stacktrace(exc, NULL, 0);
+	}
+	sentry_value_t mechanism = sentry_value_new_object();
+	sentry_value_set_by_key(mechanism, "type", sentry_value_new_string("generic"));
+	if (!description.empty())
+	{
+		sentry_value_set_by_key(mechanism, "description", sentry_value_new_string_n(description.c_str(), description.size()));
+	}
+	sentry_value_set_by_key(mechanism, "handled", sentry_value_new_bool(handled));
+	if (additionalData != nullptr)
+	{
+		sentry_value_t additionalDataVal = mapJsonObjectToSentryValue(*additionalData);
+		if (sentry_value_get_type(additionalDataVal) == SENTRY_VALUE_TYPE_OBJECT)
+		{
+			sentry_value_set_by_key(mechanism, "data", additionalDataVal);
+		}
+		else
+		{
+			sentry_value_decref(additionalDataVal);
+		}
+	}
+	sentry_value_set_by_key(exc, "mechanism", mechanism);
+
+	sentry_event_add_exception(event, exc);
+	auto event_id = sentry_capture_event(event);
+	return !sentry_uuid_is_nil(&event_id);
+#else
+	// Not available for crash handling provider
+	return false;
+#endif
+}
+
 bool useCrashHandlingProvider(int argc, const char * const *argv, bool& out_debugCrashHandler)
 {
 #if !defined(WZ_CRASHHANDLING_PROVIDER)
@@ -471,11 +544,23 @@ bool crashHandlingProviderTestCrash()
 #elif defined(WZ_CRASHHANDLING_PROVIDER_SENTRY)
 	// Sentry crash-handling provider
 	if (!enabledSentryProvider) { return false; }
+	// test reporting exceptions
+	crashHandlingProviderCaptureException(__FUNCTION__, "testexception", "Test crash initiated", false, true);
+	std::this_thread::sleep_for(std::chrono::seconds(5)); // (hopefully enough time for the exception to be sent in the background...)
+	// trigger an actual crash
 # if defined(WZ_OS_WIN)
 	RaiseException(0xE000DEAD, EXCEPTION_NONCONTINUABLE, 0, 0);
 	return false;
 # else
-	// future todo: implement for other platforms
+#  if defined(WZ_CC_GNU) && !defined(WZ_CC_INTEL) && !defined(WZ_CC_CLANG) && (7 <= __GNUC__)
+#   pragma GCC diagnostic push
+#   pragma GCC diagnostic ignored "-Wstringop-overflow"
+#endif
+	static void *invalid_mem = (void *)1;
+	memset((char *)invalid_mem, 1, 100);
+#  if defined(WZ_CC_GNU) && !defined(WZ_CC_INTEL) && !defined(WZ_CC_CLANG) && (7 <= __GNUC__)
+#   pragma GCC diagnostic pop
+#  endif
 	return false;
 # endif
 #else

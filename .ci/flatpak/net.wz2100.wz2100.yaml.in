@@ -1,19 +1,24 @@
 app-id: net.wz2100.wz2100@WZ_OUTPUT_NAME_SUFFIX@
-# We need to force the target architecture for the runtime, to support cross-compilation
-runtime: org.freedesktop.Platform@WZ_RUNTIME_SUFFIX@
-runtime-version: '22.08'
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
 sdk: org.freedesktop.Sdk
 command: warzone2100
-@WZ_CROSS_COMPILE_SDK_EXTENSIONS@
 separate-locales: false
 finish-args:
   - --require-version=0.10.3
   - --socket=wayland
   - --share=ipc
-  - --socket=x11
+  - --socket=fallback-x11
   - --device=dri
   - --socket=pulseaudio
   - --share=network
+  # Use features=devel to enable ptrace, which is needed for the crash reporter
+  # (breakpad and crashpad - only "inproc" works w/out this, and is much more limited).
+  # This same workaround is used by Firefox, and:
+  # > The application is still confined in a pid namespace, so that won't let us
+  # > escape the flatpak sandbox.
+  # Reference: https://bugzilla.mozilla.org/show_bug.cgi?id=1653852#c23
+  - --allow=devel
 cleanup:
   - /include
   - /lib/cmake
@@ -21,49 +26,18 @@ cleanup:
   - /share/gtk-doc
   - /share/man
   - /share/pkgconfig
+  - /protoc-host/
   - '*.a'
   - '*.la'
-build-options:
-  env:
-    GEM_PATH: /app/lib/ruby/gems/build-dep
-
-x-compat-aarch64-build-options: &compat-aarch64-build-options
-  # Add the cross compiler to the PATH
-  append-path: /usr/lib/sdk/toolchain-aarch64/bin
-  # binutils are available there in a different path. GCC knows
-  # where to get them. But if we need access to those tools,
-  # they can be added to the path that way:
-  # prepend-path: /usr/lib/sdk/toolchain-aarch64/aarch64-unknown-linux-gnu/bin
-  # Use the proper pkg-config path
-  prepend-pkg-config-path: /usr/lib/aarch64-linux-gnu/pkgconfig
-  # Because default CFLAGS are architecture-specific, we need
-  # to reset them to something more portable.
-  cflags: -O2 -g -pipe -Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fexceptions -fstack-protector-strong -grecord-gcc-switches -fasynchronous-unwind-tables -fstack-clash-protection -fno-omit-frame-pointer
-  cflags-override: true
-  cxxflags: -O2 -g -pipe -Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fexceptions -fstack-protector-strong -grecord-gcc-switches -fasynchronous-unwind-tables -fstack-clash-protection -fno-omit-frame-pointer
-  cxxflags-override : true
 
 modules:
-  
-  @WZ_CROSS_FILES_SETUP@
-
-  - name: asciidoctor
-    cleanup:
-      - '*'
-    buildsystem: simple
-    build-commands:
-      - gem install --ignore-dependencies --no-user-install --verbose --local --install-dir /app/lib/ruby/gems/build-dep --bindir /app/bin asciidoctor-2.0.17.gem
-    sources:
-      - type: file
-        url: https://rubygems.org/downloads/asciidoctor-2.0.17.gem
-        sha256: ed5b5e399e8d64994cc16f0983f993d6e33990909a8415b6fc8b786cdeb00f3d
 
   - name: sentry-native
     cleanup:
       - '*'
     buildsystem: simple
     build-commands:
-      - mkdir -p /app/prestaged-dl
+      - mkdir -p /app/prestaged-dl || echo "Directory already exists"
       - cp "sentry-native.zip" /app/prestaged-dl
     sources:
       - type: file
@@ -71,10 +45,24 @@ modules:
         sha512: @WZ_SENTRY_NATIVE_SHA512@
         dest-filename: sentry-native.zip
 
+  - name: prebuilt-texture-packages
+    cleanup:
+      - '*'
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/prestaged-dl || echo "Directory already exists"
+      - cp "high.wz" /app/prestaged-dl
+    sources:
+      - type: file
+        url: @WZ_PREBUILT_TERRAIN_HIGH_DL_URL@
+        sha512: @WZ_PREBUILT_TERRAIN_HIGH_DL_SHA512@
+        dest-filename: high.wz
+
   - name: glslc
     buildsystem: cmake-ninja
     builddir: true
     build-options:
+      strip: true
       no-debuginfo: true
     # Always build for host - do not include WZ_CROSS_BUILD_OPTIONS
     cleanup:
@@ -90,74 +78,127 @@ modules:
     sources:
       - type: git
         url: https://github.com/google/shaderc.git
-        tag: v2022.2
-        commit: 551f106dc64a1cacb298cc2f05613d142b53302f
+        tag: v2025.4
+        commit: 73743588fe9c39f2f1c780a087d94afac691a189
       # Replicate the needed functionality of utils/git-sync-deps
       # To avoid having to break the build sandbox to download files
       - type: git
         url: https://github.com/KhronosGroup/SPIRV-Headers.git
-        commit: 0bcc624926a25a2a273d07877fd25a6ff5ba1cfb # retrieved from DEPS in https://github.com/google/shaderc @ tag
+        commit: 01e0577914a75a2569c846778c2f93aa8e6feddd # retrieved from DEPS in https://github.com/google/shaderc @ tag
         dest: third_party/spirv-headers
       - type: git
         url: https://github.com/KhronosGroup/SPIRV-Tools.git
-        commit: 3a8a961cffb7699422a05dcbafdd721226b4547d # retrieved from DEPS in https://github.com/google/shaderc @ tag
+        commit: 19042c8921f35f7bec56b9e5c96c5f5691588ca8 # retrieved from DEPS in https://github.com/google/shaderc @ tag
         dest: third_party/spirv-tools
       - type: git
         url: https://github.com/KhronosGroup/glslang.git
-        commit: f771c1293dce29e1ac3557cf994169136155c81f # retrieved from DEPS in https://github.com/google/shaderc @ tag
+        commit: d213562e35573012b6348b2d584457c3704ac09b # retrieved from DEPS in https://github.com/google/shaderc @ tag
         dest: third_party/glslang
 
   - name: physfs
     buildsystem: cmake-ninja
     builddir: true
-    @WZ_CROSS_BUILD_OPTIONS@
     config-opts:
     - -DCMAKE_INSTALL_PREFIX=/app
     - -DCMAKE_BUILD_TYPE=Release
     - -DPHYSFS_BUILD_TEST=OFF
-    @WZ_CMAKE_CROSS_CONFIG_OPTIONS@
     sources:
       - type: archive
-        url: https://github.com/icculus/physfs/archive/eb3383b532c5f74bfeb42ec306ba2cf80eed988c.zip # PhysFS 3.2.0
-        sha512: 1068b1e0636b478f0d7910303e94d109923b2e4d809fa7a00232ba3733a4cd39c28d17851ff946859c431d7d7febdd229237cc10176eb5d5d19b49c887919fd8
+        url: https://github.com/icculus/physfs/archive/d70c3fcf06814f8608c8327d3e8136063ee0133d.zip # PhysFS 3.2.0+
+        sha512: d2ee14800be053d91ce4417db09c13825b0a3468fd7eddc05e79709ed0dd971528dff39b04122ea501b67cf715c2e6ce69b0c2b837d67c75ef9b570515ddde98
       
   - name: fribidi
     buildsystem: meson
     builddir: true
-    @WZ_CROSS_BUILD_OPTIONS@
     config-opts:
-    @WZ_MESON_CROSS_CONFIG_OPTIONS@
     - -Ddocs=false
     - -Dbin=false
     - -Dtests=false
     sources:
       - type: git
         url: https://github.com/fribidi/fribidi
-        tag: v1.0.12
-        commit: 6428d8469e536bcbb6e12c7b79ba6659371c435a
+        tag: v1.0.16
+        commit: 68162babff4f39c4e2dc164a5e825af93bda9983
 
   - name: libsodium
-    @WZ_CROSS_BUILD_OPTIONS@
-    config-opts:
-    @WZ_AUTOTOOLS_CROSS_CONFIG_OPTIONS@
     sources:
       - type: archive
-        url: https://github.com/jedisct1/libsodium/releases/download/1.0.18-RELEASE/libsodium-1.0.18.tar.gz
-        sha256: 6f504490b342a4f8a4c4a02fc9b866cbef8622d5df4e5452b46be121e46636c1
+        url: https://github.com/jedisct1/libsodium/releases/download/1.0.20-RELEASE/libsodium-1.0.20.tar.gz
+        sha256: ebb65ef6ca439333c2bb41a0c1990587288da07f6c7fd07cb3a18cc18d30ce19
+
+  - name: abseil-cpp
+    buildsystem: cmake-ninja
+    builddir: true
+    cleanup:
+      - '*'
+    config-opts:
+      - -DCMAKE_INSTALL_PREFIX=/app
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_CXX_STANDARD=17
+      - -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+      - -DBUILD_SHARED_LIBS:BOOL=OFF
+    sources:
+      - type: archive
+        url: https://github.com/abseil/abseil-cpp/releases/download/20250127.1/abseil-cpp-20250127.1.tar.gz
+        sha256: b396401fd29e2e679cace77867481d388c807671dc2acc602a0259eeb79b7811
+
+  - name: protobuf
+    buildsystem: cmake-ninja
+    builddir: true
+    cleanup:
+      - '/bin'
+      - '/lib/debug/bin'
+      - '/lib/libprotoc.*'
+      - '/lib/debug/lib/libprotoc.*'
+    config-opts:
+      - -DCMAKE_INSTALL_PREFIX=/app
+      - -DCMAKE_BUILD_TYPE=Release
+      - -Dprotobuf_BUILD_TESTS:BOOL=OFF
+      - -Dprotobuf_BUILD_PROTOBUF_BINARIES:BOOL=ON
+      - -Dprotobuf_BUILD_PROTOC_BINARIES:BOOL=ON
+      - -Dprotobuf_BUILD_SHARED_LIBS:BOOL=ON
+    sources:
+      - type: archive
+        url: https://github.com/protocolbuffers/protobuf/releases/download/v30.1/protobuf-30.1.tar.gz
+        sha256: 1451b03faec83aed17cdc71671d1bbdfd72e54086b827f5f6fd02bf7a4041b68
+
+  - name: libzip
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+    - -DCMAKE_INSTALL_PREFIX=/app
+    - -DCMAKE_BUILD_TYPE=Release
+    - -DENABLE_COMMONCRYPTO=OFF
+    - -DENABLE_GNUTLS=OFF
+    - -DENABLE_MBEDTLS=OFF
+    - -DENABLE_OPENSSL=OFF
+    - -DENABLE_WINDOWS_CRYPTO=OFF
+    - -DENABLE_LZMA=OFF
+    - -DENABLE_ZSTD=OFF
+    - -DBUILD_TOOLS=OFF
+    - -DBUILD_REGRESS=OFF
+    - -DBUILD_OSSFUZZ=OFF
+    - -DBUILD_EXAMPLES=OFF
+    - -DBUILD_DOC=OFF
+    sources:
+      - type: archive
+        url: https://github.com/nih-at/libzip/releases/download/v1.11.3/libzip-1.11.3.tar.gz
+        sha512: 476ac845be5ae75cb666076bada9fb00c08d267308623672e9c7685998aeff40378a96d0fb37cde5b6d0f0c61935c84bd0e63900deff1554c9e0208f626ff390
 
   - name: warzone2100
     buildsystem: cmake-ninja
     builddir: true
-    @WZ_CROSS_BUILD_OPTIONS@
     config-opts:
       - -DCMAKE_BUILD_TYPE=Release
       - -DWZ_SKIP_OUTPUT_NAME_SUFFIX_ON_BINARY=ON
       - -DWZ_APPSTREAM_ID=net.wz2100.wz2100
+      - -DENABLE_DISCORD:BOOL=ON
       - -DWZ_BUILD_SENTRY:BOOL=ON
       - -DWZ_SENTRY_PREDOWNLOADED_SENTRY_ARCHIVE=/app/prestaged-dl/sentry-native.zip
-      # Have to use inproc for now - breakpad / crashpad do not work in the Flatpak sandbox
-      - -DSENTRY_BACKEND=inproc
-      @WZ_CMAKE_CROSS_CONFIG_OPTIONS@
+      - -DWZ_DOWNLOAD_PREBUILT_PACKAGES_ASSET_DIR=/app/prestaged-dl
+      # Crashpad/breakpad works in the Flatpak sandbox *if* --allow=devel is set above. Otherwise, this must be: inproc
+      - -DSENTRY_BACKEND=crashpad
+      - -DENABLE_GNS_NETWORK_BACKEND:BOOL=ON
     secret-opts:
       - -DWZ_DISTRIBUTOR:STRING=$WZ_DISTRIBUTOR
       - -DDISCORD_RPC_APPID:STRING=$DISCORD_RPC_APPID
@@ -167,11 +208,10 @@ modules:
     secret-env:
       - WZ_OUTPUT_NAME_SUFFIX
     sources:
-      - type: dir
-        path: ../../
+      @WZ_MAIN_MODULE_SOURCE@
       - type: file
         url: https://github.com/Warzone2100/wz-sequences/releases/download/v3/standard-quality-en-sequences.wz
-        sha256: 142ae905be288cca33357a49f42b884c190e828fc0b1b1773ded5dff774f41a3        
+        sha256: 142ae905be288cca33357a49f42b884c190e828fc0b1b1773ded5dff774f41a3
     post-install:
       - mkdir -p /app/share/icons/hicolor/128x128/apps
       - cp /app/share/icons/net.wz2100.wz2100*.png /app/share/icons/hicolor/128x128/apps/

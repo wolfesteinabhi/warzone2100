@@ -16,10 +16,13 @@ Includes another source code file at this point. You should generally only speci
 not try to specify its path, here.
 However, *if* you specify sub-paths / sub-folders, the path separator should **always** be forward-slash ("/").
 
-## includeJSON(filePath)
+## includeJSON(filePath[, quiet])
 
 Reads a JSON file and returns an object. You should generally only specify the filename,
 However, *if* you specify sub-paths / sub-folders, the path separator should **always** be forward-slash ("/").
+
+The optional ```quiet``` parameter (available in 4.6.3+) can be set to ```true``` to suppress logged errors
+when the supplied filePath does not exist (by default, it is ```false``` and errors are logged and displayed).
 
 ## setTimer(functionName, milliseconds[, object])
 
@@ -87,11 +90,6 @@ Return an array containing all the buildable templates for the given player. (3.
 
 Remove reticule button. DO NOT USE FOR ANYTHING.
 
-## removeBeacon(playerFilter)
-
-Remove a beacon message sent to target player. Target may also be ```ALLIES```.
-Returns a boolean that is true on success. (3.2+ only)
-
 ## resetLabel(labelName[, playerFilter])
 
 Reset the trigger on an label. Next time a unit enters the area, it will trigger
@@ -135,14 +133,14 @@ Fetch something denoted by a label, a map position or its object ID. A label ref
 a position or a **game object** on the map defined using the map editor and stored
 together with the map. In this case, the only argument is a text label. The function
 returns an object that has a type variable defining what it is (in case this is
-unclear). This type will be one of ```DROID```, ```STRUCTURE```, ```FEATURE```, ```AREA```, ```GROUP``` or ```POSITION```.
-The ```AREA``` has defined 'x', 'y', 'x2', and 'y2', while ```POSITION``` has only defined 'x' and 'y'.
-The ```GROUP``` type has defined 'type' and 'id' of the group, which can be passed to enumGroup().
+unclear). This type will be one of DROID, STRUCTURE, FEATURE, AREA, GROUP or POSITION.
+The AREA has defined 'x', 'y', 'x2', and 'y2', while POSITION has only defined 'x' and 'y'.
+The GROUP type has defined 'type' and 'id' of the group, which can be passed to enumGroup().
 This is a fast operation of O(log n) algorithmic complexity. If the label is not found, an
 undefined value is returned. If whatever object the label should point at no longer exists,
 a null value is returned.
 
-You can also fetch a ```STRUCTURE``` or ```FEATURE``` type game object from a given map position (if any).
+You can also fetch a STRUCTURE or FEATURE type game object from a given map position (if any).
 This is a very fast operation of O(1) algorithmic complexity. Droids cannot be fetched in this
 manner, since they do not have a unique placement on map tiles. Finally, you can fetch an object using
 its ID, in which case you need to pass its type, owner and unique object ID. This is an
@@ -154,7 +152,7 @@ Returns an array of game objects seen within the given area that passes the opti
 which can be one of a player index, ```ALL_PLAYERS```, ```ALLIES``` or ```ENEMIES```. By default, filter is
 ```ALL_PLAYERS```. Finally an optional parameter can specify whether only visible objects should be
 returned; by default only visible objects are returned. The label can either be actual
-positions or a label to an ```AREA```. Calling this function is much faster than iterating over all
+positions or a label to an AREA. Calling this function is much faster than iterating over all
 game objects using other enum functions. (3.2+ only)
 
 ## enumGroup(groupId)
@@ -331,7 +329,7 @@ See wzscript docs for info, to the extent any exist. (3.2+ only)
 ## hackGetObj(objectType, player, id)
 
 Function to find and return a game object of ```DROID```, ```FEATURE``` or ```STRUCTURE``` types, if it exists.
-Otherwise, it will return null. This function is deprecated by getObject(). (3.2+ only)
+Otherwise, it will return null. This function is DEPRECATED by getObject(). (3.2+ only)
 
 ## hackAssert(condition, message...)
 
@@ -439,8 +437,8 @@ Returns an array of all research objects that are currently and immediately avai
 
 ## enumRange(x, y, range[, playerFilter[, seen]])
 
-Returns an array of game objects seen within range of given position that passes the optional filter
-which can be one of a player index, ```ALL_PLAYERS```, ```ALLIES``` or ```ENEMIES```. By default, filter is
+Returns an array of game objects seen within range of given position that passes the optional playerFilter
+which can be one of a player index, ```ALL_PLAYERS```, ```ALLIES``` or ```ENEMIES```. By default, playerFilter is
 ```ALL_PLAYERS```. Finally an optional parameter can specify whether only visible objects should be
 returned; by default only visible objects are returned. Calling this function is much faster than
 iterating over all game objects using other enum functions. (3.2+ only)
@@ -482,6 +480,10 @@ Returns true if given structure can be built. It checks both research and unit l
 
 Pick a location for constructing a certain type of building near some given position.
 Returns an object containing "type" ```POSITION```, and "x" and "y" values, if successful.
+
+## structureCanFit(structureName, x, y[, direction])
+
+Return true if given building can be built at the position. (4.6+ only)
 
 ## droidCanReach(droid, x, y)
 
@@ -561,8 +563,20 @@ The lassat needs a target.
 
 ## chat(playerFilter, message)
 
-Send a message to target player. Target may also be ```ALL_PLAYERS``` or ```ALLIES```.
+Send a message to playerFilter. playerFilter may also be ```ALL_PLAYERS``` or ```ALLIES```.
 Returns a boolean that is true on success. (3.2+ only)
+
+## quickChat(playerFilter, messageEnum)
+
+Send a message to playerFilter. playerFilter may also be ```ALL_PLAYERS``` or ```ALLIES```.
+```messageEnum``` is the WzQuickChatMessage value. (See the WzQuickChatMessages global
+object for constants to use. Pass in these constants directly, do not hard-code values!)
+Returns a boolean that is true on success. (4.4+ only)
+
+## getDroidPath(droid)
+
+Get path of a droid.
+Returns an array of positions.
 
 ## addBeacon(x, y, playerFilter[, message])
 
@@ -571,7 +585,7 @@ Message is currently unused. Returns a boolean that is true on success. (3.2+ on
 
 ## removeBeacon(playerFilter)
 
-Remove a beacon message sent to target player. Target may also be ```ALLIES```.
+Remove a beacon message sent to playerFilter. Target may also be ```ALLIES```.
 Returns a boolean that is true on success. (3.2+ only)
 
 ## getDroidProduction(factory)
@@ -594,7 +608,7 @@ Get the percentage of experience this player droids are going to gain. (3.2+ onl
 ## setDroidLimit(player, maxNumber[, droidType])
 
 Set the maximum number of droids that this player can produce. If a third
-parameter is added, this is the droid type to limit. It can be DROID_ANY
+parameter is added, this is the droid type to limit. It can be ```DROID_ANY```
 for droids in general, ```DROID_CONSTRUCT``` for constructors, or ```DROID_COMMAND```
 for commanders. (3.2+ only)
 
@@ -633,6 +647,27 @@ Center the player's camera at the given position.
 
 Play a sound, optionally at a location.
 
+## addGuideTopic(guideTopicID[, showFlags[, excludedTopicIDs]])
+
+Add a guide topic to the in-game guide.
+
+guideTopicID is expected to be a "::"-delimited guide topic id (which corresponds to the .json file containing the guide topic information).
+> For example, ```"wz2100::structures::hq"``` will attempt to load ```"guidetopics/wz2100/structures/hq.json"```, the guide topic file about the hq / command center.
+
+guideTopicID also has limited support for trailing wildcards. For example:
+- ```"wz2100::units::*"``` will load all guide topic .json files in the folder ```"guidetopics/wz2100/units/"``` (but not any subfolders)
+- ```"wz2100::**"``` will load all guide topic .json files within the folder ```"guidetopics/wz2100/"``` **and** all subfolders
+
+(The wildcard is only supported in the last position.)
+
+showFlags can be used to configure automatic display of the guide, and can be set to one or more of:
+- ```SHOWTOPIC_FIRSTADD```: open guide only if this topic is newly-added (this playthrough) - if topic was already added, the guide won't be automatically displayed
+- ```SHOWTOPIC_NEVERVIEWED```: open guide only if this topic has never been viewed by the player before (in any playthrough)
+You can also specify multiple flags (ex. ```SHOWTOPIC_FIRSTADD | SHOWTOPIC_NEVERVIEWED```).
+The default behavior (where showFlags is omitted) merely adds the topic to the guide, but does not automatically display / open the guide.
+
+excludedTopicIDs can be a string or a list of string guide topic IDs (non-wildcard) to be excluded, when supplying a wildcard guideTopicID.
+
 ## gameOverMessage(gameWon[, showBackDrop[, showOutro]])
 
 End game in victory or defeat.
@@ -653,7 +688,7 @@ Set mission countdown in seconds.
 
 Get time remaining on mission countdown in seconds. (3.2+ only)
 
-## setReinforcementTime(time)
+## setReinforcementTime(time[, removeLaunch])
 
 Set time for reinforcements to arrive. If time is negative, the reinforcement GUI
 is removed and the timer stopped. Time is in seconds.
@@ -661,7 +696,7 @@ If time equals to the magic ```LZ_COMPROMISED_TIME``` constant, reinforcement GU
 is set to "--:--" and reinforcements are suppressed until this function is called
 again with a regular time value.
 
-## completeResearch(research[, player[, forceResearch]])
+## completeResearch(researchName[, player[, forceResearch]])
 
 Finish a research for the given player.
 forceResearch will allow a research topic to be researched again. 3.3+
@@ -755,12 +790,16 @@ Returns true if an alliance exists between the two players, or they are the same
 ## removeStruct(structure)
 
 Immediately remove the given structure from the map. Returns a boolean that is true on success.
-No special effects are applied. Deprecated since 3.2. Use `removeObject` instead.
+No special effects are applied. DEPRECATED since 3.2. Use `removeObject` instead.
 
 ## removeObject(gameObject[, sfx])
 
-Remove the given game object with special effects. Returns a boolean that is true on success.
+Queue the given game object for removal with or without special effects. Returns a boolean that is true on success.
 A second, optional boolean parameter specifies whether special effects are to be applied. (3.2+ only)
+
+BREAKING CHANGE (4.5+): the effect of this function is not immediate anymore, the object will be
+queued for later removal instead of destroying it right away.
+User scripts should not rely on this function having immediate side-effects.
 
 ## setScrollLimits(x1, y1, x2, y2)
 
@@ -812,8 +851,8 @@ Donate power to another player. Returns true. (3.2+ only)
 
 ## setNoGoArea(x1, y1, x2, y2, playerFilter)
 
-Creates an area on the map on which nothing can be built. If player is zero,
-then landing lights are placed. If player is ```ALL_PLAYERS```, then a limbo landing zone
+Creates an area on the map on which nothing can be built. If playerFilter is zero,
+then landing lights are placed. If playerFilter is ```ALL_PLAYERS```, then a limbo landing zone
 is created and limbo droids placed.
 
 ## startTransporterEntry(x, y, player)
@@ -833,17 +872,28 @@ Set or unset an object flag on a given game object. Does not take care of networ
 needs wrapping in a syncRequest. (3.3+ only.)
 Recognized object flags: ```OBJECT_FLAG_UNSELECTABLE``` - makes object unavailable for selection from player UI.
 
-## fireWeaponAtLoc(weaponName, x, y[, player])
+## fireWeaponAtLoc(weaponName, x, y[, player[, center]])
 
 Fires a weapon at the given coordinates (3.3+ only). The player is who owns the projectile.
+
 Please use fireWeaponAtObj() to damage objects as multiplayer and campaign
 may have different friendly fire logic for a few weapons (like the lassat).
 
-## fireWeaponAtObj(weapon, gameObject[, player])
+The optional ```center``` parameter (4.6.2+ only) can be set to ```true```
+to target the center of the tile. (The default is ```false```.)
+
+## fireWeaponAtObj(weaponName, gameObject[, player])
 
 Fires a weapon at a game object (3.3+ only). The player is who owns the projectile.
+
+## setGameStoryLogPlayerDataValue(player, key_str, value_str)
+
+Set a key + value string associated with a player, to be output to the playerData in the game story log (4.4+ only)
+(Intended to be called from endconditions.js to pass a useful string that describes the player state for display-only purposes.)
+(Not currently intended to be called from anywhere else.)
 
 ## transformPlayerToSpectator(player)
 
 Transform a player to a spectator. (4.2+ only)
 This is a one-time transformation, destroys the player's HQ and all of their remaining units, and must occur deterministically on all clients.
+

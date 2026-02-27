@@ -1,4 +1,3 @@
-
 include("script/campaign/libcampaign.js");
 include("script/campaign/templates.js");
 
@@ -6,8 +5,8 @@ var capturedCivCount; //How many civilians have been captured. 59 for defeat.
 var civilianPosIndex; //Current location of civilian groups.
 var shepardGroup; //Enemy group that protects civilians.
 var lastSoundTime; //Only play the "civilian rescued" sound every so often.
-const COLLECTIVE_RES = [
-	"R-Defense-WallUpgrade06", "R-Struc-Materials06", "R-Sys-Engineering02",
+const mis_collectiveRes = [
+	"R-Defense-WallUpgrade05", "R-Struc-Materials05", "R-Sys-Engineering02",
 	"R-Vehicle-Engine04", "R-Vehicle-Metals05", "R-Cyborg-Metals05",
 	"R-Wpn-Cannon-Accuracy02", "R-Wpn-Cannon-Damage05", "R-Wpn-Cannon-ROF01",
 	"R-Wpn-Flamer-Damage06", "R-Wpn-Flamer-ROF03", "R-Wpn-MG-Damage06",
@@ -16,8 +15,20 @@ const COLLECTIVE_RES = [
 	"R-Wpn-Rocket-ROF03", "R-Wpn-RocketSlow-Accuracy03", "R-Wpn-RocketSlow-Damage05",
 	"R-Sys-Sensor-Upgrade01", "R-Wpn-RocketSlow-ROF01", "R-Wpn-Howitzer-ROF01",
 	"R-Wpn-Howitzer-Damage07", "R-Cyborg-Armor-Heat01", "R-Vehicle-Armor-Heat01",
-	"R-Wpn-Bomb-Damage01", "R-Wpn-AAGun-Damage03", "R-Wpn-AAGun-ROF02",
+	"R-Wpn-Bomb-Damage01", "R-Wpn-AAGun-Damage02", "R-Wpn-AAGun-ROF02",
 	"R-Wpn-AAGun-Accuracy01", "R-Struc-VTOLPad-Upgrade01"
+];
+const mis_collectiveResClassic = [
+	"R-Defense-WallUpgrade03", "R-Struc-Materials04", "R-Struc-Factory-Upgrade04",
+	"R-Struc-VTOLPad-Upgrade01", "R-Vehicle-Engine04", "R-Vehicle-Metals03",
+	"R-Cyborg-Metals04", "R-Vehicle-Armor-Heat02", "R-Cyborg-Armor-Heat02",
+	"R-Sys-Engineering02", "R-Wpn-Cannon-Accuracy02", "R-Wpn-Cannon-Damage04",
+	"R-Wpn-Cannon-ROF03", "R-Wpn-Flamer-Damage06", "R-Wpn-Flamer-ROF03",
+	"R-Wpn-Howitzer-Accuracy02", "R-Wpn-Howitzer-Damage02", "R-Sys-Sensor-Upgrade01",
+	"R-Wpn-MG-Damage07", "R-Wpn-MG-ROF03", "R-Wpn-Mortar-Acc02", "R-Wpn-Mortar-Damage06",
+	"R-Wpn-Mortar-ROF03", "R-Wpn-Rocket-Accuracy02", "R-Wpn-Rocket-Damage06",
+	"R-Wpn-Rocket-ROF03", "R-Wpn-RocketSlow-Accuracy03", "R-Wpn-RocketSlow-Damage05",
+	"R-Wpn-RocketSlow-ROF03"
 ];
 
 //Play video about civilians being captured by the Collective. Triggered
@@ -26,7 +37,7 @@ function videoTrigger()
 {
 	camSetExtraObjectiveMessage(_("Rescue the civilians from The Collective before too many are captured"));
 
-	setMissionTime(getMissionTime() + camChangeOnDiff(camMinutesToSeconds(30)));
+	camSetMissionTimer(getMissionTime() + camChangeOnDiff(camMinutesToSeconds(30)));
 	setTimer("civilianOrders", camSecondsToMilliseconds(2));
 	setTimer("captureCivilians", camChangeOnDiff(camSecondsToMilliseconds(10)));
 
@@ -50,7 +61,7 @@ camAreaEvent("base3Trigger", function(droid)
 //Send idle droids in this base to attack when the player spots the base
 function camEnemyBaseDetected_COAirBase()
 {
-	var droids = enumArea("airBaseCleanup", THE_COLLECTIVE, false).filter((obj) => (
+	const droids = enumArea("airBaseCleanup", CAM_THE_COLLECTIVE, false).filter((obj) => (
 		obj.type === DROID && obj.group === null
 	));
 
@@ -65,6 +76,35 @@ function camEnemyBaseDetected_COAirBase()
 function camEnemyBaseEliminated_COAirBase()
 {
 	camCallOnce("videoTrigger");
+}
+
+function insaneReinforcementSpawn()
+{
+	const units = [cTempl.comatt, cTempl.comit, cTempl.cohct, cTempl.commrl, cTempl.comhpv, cTempl.npcybc];
+	const limits = {minimum: 8, maxRandom: 8};
+	const location = ["southWestSpawnPos", "insaneNorthSpawnPos"];
+	camSendGenericSpawn(CAM_REINFORCE_GROUND, CAM_THE_COLLECTIVE, CAM_REINFORCE_CONDITION_UNITS, location, units, limits.minimum, limits.maxRandom);
+}
+
+function insaneTransporterAttack()
+{
+	const DISTANCE_FROM_POS = 40;
+	const units = [cTempl.cohct, cTempl.commrl, cTempl.comhpv, cTempl.comtathh];
+	const limits = {minimum: 10, maxRandom: 0};
+	const location = camGenerateRandomMapCoordinate(getObject("startPosition"), CAM_GENERIC_LAND_STAT, DISTANCE_FROM_POS);
+	camSendGenericSpawn(CAM_REINFORCE_TRANSPORT, CAM_THE_COLLECTIVE, CAM_REINFORCE_CONDITION_ARTIFACTS, location, units, limits.minimum, limits.maxRandom);
+}
+
+function insaneAttackRandom()
+{
+	const SCAN_DISTANCE = 2;
+	const DISTANCE_FROM_POS = 40;
+	const list = [cTempl.npcybr, cTempl.npcybc, cTempl.comorb, cTempl.comhpv, cTempl.comhpv, cTempl.comatt, cTempl.comatt];
+	const extraUnits = [cTempl.cohct, cTempl.cohct, cTempl.comsens, cTempl.comsens];
+	const units = {units: list, appended: extraUnits};
+	const limits = {minimum: 10, maxRandom: 4};
+	const location = camMakePos(camGenerateRandomMapEdgeCoordinate(getObject("startPosition"), CAM_GENERIC_LAND_STAT, DISTANCE_FROM_POS, SCAN_DISTANCE));
+	camSendGenericSpawn(CAM_REINFORCE_GROUND, CAM_THE_COLLECTIVE, CAM_REINFORCE_CONDITION_ARTIFACTS, location, units, limits.minimum, limits.maxRandom);
 }
 
 function enableFactories()
@@ -119,14 +159,14 @@ function activateGroups()
 
 function truckDefense()
 {
-	if (enumDroid(THE_COLLECTIVE, DROID_CONSTRUCT).length === 0)
+	if (enumDroid(CAM_THE_COLLECTIVE, DROID_CONSTRUCT).length === 0)
 	{
 		removeTimer("truckDefense");
 		return;
 	}
 
-	const LIST = ["CO-Tower-LtATRkt", "PillBox1", "CO-WallTower-HvCan"];
-	camQueueBuilding(THE_COLLECTIVE, LIST[camRand(LIST.length)]);
+	const list = ["CO-Tower-LtATRkt", "PillBox1", "CO-WallTower-HvCan"];
+	camQueueBuilding(CAM_THE_COLLECTIVE, list[camRand(list.length)]);
 }
 
 //This controls the collective cyborg shepard groups and moving civilians
@@ -134,35 +174,34 @@ function truckDefense()
 //when all of the shepard group members are destroyed).
 function captureCivilians()
 {
-	var wayPoints = [
+	const wayPoints = [
 		"civPoint1", "civPoint2", "civPoint3", "civPoint4",
 		"civPoint5", "civPoint6", "civPoint7", "civCapturePos"
 	];
-	var currPos = getObject(wayPoints[civilianPosIndex]);
-	var shepardDroids = enumGroup(shepardGroup);
+	const currPos = getObject(wayPoints[civilianPosIndex]);
+	const shepardDroids = enumGroup(shepardGroup);
 
 	if (shepardDroids.length > 0)
 	{
 		//add some civs
-		var i = 0;
-		var num = 1 + camRand(3);
-		for (i = 0; i < num; ++i)
+		const NUM = 1 + camRand(3);
+		for (let i = 0; i < NUM; ++i)
 		{
-			addDroid(SCAV_7, currPos.x, currPos.y, "Civilian",
-					"B1BaBaPerson01", "BaBaLegs", "", "", "BabaMG");
+			addDroid(CAM_SCAV_7, currPos.x, currPos.y, "Civilian",
+					tBody.scav.human, tProp.scav.legs, "", "", tWeap.scav.machinegun);
 		}
 
 		//Only count civilians that are not in the the transporter base.
-		var civs = enumArea(0, 0, 35, mapHeight, SCAV_7, false);
+		const civs = enumArea(0, 0, 35, mapHeight, CAM_SCAV_7, false);
 		//Move them
-		for (i = 0; i < civs.length; ++i)
+		for (let i = 0; i < civs.length; ++i)
 		{
 			orderDroidLoc(civs[i], DORDER_MOVE, currPos.x, currPos.y);
 		}
 
 		if (civilianPosIndex <= 5)
 		{
-			for (i = 0; i < shepardDroids.length; ++i)
+			for (let i = 0; i < shepardDroids.length; ++i)
 			{
 				orderDroidLoc(shepardDroids[i], DORDER_MOVE, currPos.x, currPos.y);
 			}
@@ -184,15 +223,14 @@ function captureCivilians()
 //before removal.
 function civilianOrders()
 {
-	var lz = getObject("startPosition");
-	var rescueSound = "pcv612.ogg";	//"Civilian Rescued".
-	var civs = enumDroid(SCAV_7);
-	var rescued = false;
+	const lz = getObject("startPosition");
+	const civs = enumDroid(CAM_SCAV_7);
+	let rescued = false;
 
 	//Check if a civilian is close to a player droid.
 	for (let i = 0; i < civs.length; ++i)
 	{
-		var objs = enumRange(civs[i].x, civs[i].y, 6, CAM_HUMAN_PLAYER, false);
+		const objs = enumRange(civs[i].x, civs[i].y, 6, CAM_HUMAN_PLAYER, false);
 		for (let j = 0; j < objs.length; ++j)
 		{
 			if (objs[j].type === DROID)
@@ -208,20 +246,20 @@ function civilianOrders()
 	if (rescued && ((lastSoundTime + camSecondsToMilliseconds(30)) < gameTime))
 	{
 		lastSoundTime = gameTime;
-		playSound(rescueSound);
+		playSound(cam_sounds.rescue.civilianRescued);
 	}
 }
 
 //Capture civilans.
 function eventTransporterLanded(transport)
 {
-	var escaping = "pcv632.ogg"; //"Enemy escaping".
-	var position = getObject("COTransportPos");
-	var civs = enumRange(position.x, position.y, 15, SCAV_7, false);
+	const SCAN_RADIUS = 4;
+	const position = getObject("COTransportPos");
+	const civs = enumRange(position.x, position.y, SCAN_RADIUS, CAM_SCAV_7, false);
 
-	if (civs.length)
+	if ((civs.length > 0) && (camDist(transport, position) <= SCAN_RADIUS))
 	{
-		playSound(escaping);
+		playSound(cam_sounds.enemyEscaping);
 		capturedCivCount += civs.length - 1;
 		for (let i = 0; i < civs.length; ++i)
 		{
@@ -233,18 +271,34 @@ function eventTransporterLanded(transport)
 //Send Collective transport as long as the player has not entered the base.
 function sendCOTransporter()
 {
-	var list = [cTempl.npcybr, cTempl.npcybr];
-	var tPos = getObject("COTransportPos");
-	var pDroid = enumRange(tPos.x, tPos.y, 6, CAM_HUMAN_PLAYER, false);
+	const list = [cTempl.npcybr, cTempl.npcybr];
+	const tPos = getObject("COTransportPos");
+	const pDroid = enumRange(tPos.x, tPos.y, 6, CAM_HUMAN_PLAYER, false);
 
 	if (!pDroid.length)
 	{
-		camSendReinforcement(THE_COLLECTIVE, camMakePos("COTransportPos"), list,
+		camSendReinforcement(CAM_THE_COLLECTIVE, camMakePos("COTransportPos"), list,
 			CAM_REINFORCE_TRANSPORT, {
 				entry: { x: 2, y: 80 },
 				exit: { x: 2, y: 80 }
 			}
 		);
+	}
+}
+
+// Removes the pepperpot pits in the transporter base for Classic.
+function removeTransportBasePepperpots()
+{
+	const objects = enumArea("transportBaseCleanup", CAM_THE_COLLECTIVE, false);
+
+	for (let i = 0, len = objects.length; i < len; ++i)
+	{
+		const obj = objects[i];
+
+		if (obj.type === STRUCTURE && obj.stattype === DEFENSE && obj.hasIndirect)
+		{
+			camSafeRemoveObject(obj, false);
+		}
 	}
 }
 
@@ -260,8 +314,8 @@ function extraVictoryCondition()
 	}
 	else
 	{
-		var lz = getObject("startPosition");
-		var civs = enumRange(lz.x, lz.y, 30, SCAV_7, false);
+		const lz = getObject("startPosition");
+		const civs = enumRange(lz.x, lz.y, 30, CAM_SCAV_7, false);
 
 		for (let i = 0; i < civs.length; ++i)
 		{
@@ -275,57 +329,78 @@ function extraVictoryCondition()
 
 function eventStartLevel()
 {
-	camSetStandardWinLossConditions(CAM_VICTORY_STANDARD, "SUB_2_5S", {
+	camSetStandardWinLossConditions(CAM_VICTORY_STANDARD, cam_levels.beta6.pre, {
 		callback: "extraVictoryCondition"
 	});
 
-	var startpos = getObject("startPosition");
-	var lz = getObject("landingZone"); //player lz
-	centreView(startpos.x, startpos.y);
+	const startPos = getObject("startPosition");
+	const lz = getObject("landingZone"); //player lz
+	centreView(startPos.x, startPos.y);
 	setNoGoArea(lz.x, lz.y, lz.x2, lz.y2, CAM_HUMAN_PLAYER);
 
-	var enemyLz = getObject("COLandingZone");
-	setNoGoArea(enemyLz.x, enemyLz.y, enemyLz.x2, enemyLz.y2, 5);
-
-	camSetArtifacts({
-		"rippleRocket": { tech: "R-Wpn-Rocket06-IDF" },
-		"quadbof": { tech: "R-Wpn-AAGun02" },
-		"howitzer": { tech: "R-Wpn-HowitzerMk1" },
-		"COHeavyFac-Leopard": { tech: "R-Vehicle-Body06" }, //Panther
-		"COHeavyFac-Upgrade": { tech: "R-Struc-Factory-Upgrade04" },
-		"COVtolFacLeft-Prop": { tech: "R-Vehicle-Prop-VTOL" },
-		"COInfernoEmplacement-Arti": { tech: "R-Wpn-Flamer-ROF02" },
-	});
-
-	setMissionTime(camChangeOnDiff(camHoursToSeconds(2)));
-
-	setAlliance(THE_COLLECTIVE, SCAV_7, true);
-	setAlliance(CAM_HUMAN_PLAYER, SCAV_7, true);
-	camCompleteRequiredResearch(COLLECTIVE_RES, THE_COLLECTIVE);
-
-	if (difficulty >= MEDIUM)
+	if (camClassicMode())
 	{
-		camUpgradeOnMapTemplates(cTempl.commc, cTempl.commrp, THE_COLLECTIVE);
+		camClassicResearch(mis_collectiveResClassic, CAM_THE_COLLECTIVE);
+
+		camSetArtifacts({
+			"rippleRocket": { tech: "R-Wpn-Rocket06-IDF" },
+			"COResearchLab": { tech: "R-Struc-Factory-Upgrade04" },
+			"quadbof": { tech: "R-Wpn-AAGun02" },
+			"howitzer": { tech: "R-Wpn-HowitzerMk1" },
+			"COHeavyFac-Leopard": { tech: "R-Vehicle-Body02" }, //Leopard
+			"COVtolFacLeft-Prop": { tech: "R-Vehicle-Prop-VTOL" },
+		});
+
+		if (!camAllowInsaneSpawns())
+		{
+			removeTransportBasePepperpots();
+		}
 	}
+	else
+	{
+		camCompleteRequiredResearch(mis_collectiveRes, CAM_THE_COLLECTIVE);
+
+		if (difficulty >= MEDIUM)
+		{
+			camUpgradeOnMapTemplates(cTempl.commc, cTempl.commrp, CAM_THE_COLLECTIVE);
+		}
+		camUpgradeOnMapTemplates(cTempl.npcybf, cTempl.cocybth, CAM_THE_COLLECTIVE);
+
+		camSetArtifacts({
+			"rippleRocket": { tech: "R-Wpn-Rocket06-IDF" },
+			"quadbof": { tech: "R-Wpn-AAGun02" },
+			"howitzer": { tech: "R-Wpn-HowitzerMk1" },
+			"COHeavyFac-Leopard": { tech: "R-Vehicle-Body06" }, //Panther
+			"COHeavyFac-Upgrade": { tech: "R-Struc-Factory-Upgrade04" },
+			"COVtolFacLeft-Prop": { tech: "R-Vehicle-Prop-VTOL" },
+			"COInfernoEmplacement-Arti": { tech: "R-Wpn-Flamer-ROF02" },
+			"COPepperpotPitNE": { tech: "R-Wpn-Mortar3" },
+		});
+	}
+
+	camSetMissionTimer(camChangeOnDiff(camHoursToSeconds(2)));
+
+	setAlliance(CAM_THE_COLLECTIVE, CAM_SCAV_7, true);
+	setAlliance(CAM_HUMAN_PLAYER, CAM_SCAV_7, true);
 
 	camSetEnemyBases({
 		"COAirBase": {
 			cleanup: "airBaseCleanup",
 			detectMsg: "C2C_BASE1",
-			detectSnd: "pcv379.ogg",
-			eliminateSnd: "pcv394.ogg",
+			detectSnd: cam_sounds.baseDetection.enemyBaseDetected,
+			eliminateSnd: cam_sounds.baseElimination.enemyBaseEradicated,
 		},
 		"COCyborgBase": {
 			cleanup: "cyborgBaseCleanup",
 			detectMsg: "C2C_BASE2",
-			detectSnd: "pcv379.ogg",
-			eliminateSnd: "pcv394.ogg",
+			detectSnd: cam_sounds.baseDetection.enemyBaseDetected,
+			eliminateSnd: cam_sounds.baseElimination.enemyBaseEradicated,
 		},
 		"COtransportBase": {
 			cleanup: "transportBaseCleanup",
 			detectMsg: "C2C_BASE3",
-			detectSnd: "pcv379.ogg",
-			eliminateSnd: "pcv394.ogg",
+			detectSnd: cam_sounds.baseDetection.enemyBaseDetected,
+			eliminateSnd: cam_sounds.baseElimination.enemyBaseEradicated,
 		},
 	});
 
@@ -364,7 +439,7 @@ function eventStartLevel()
 				repair: 40,
 				count: -1,
 			},
-			templates: [cTempl.npcybf, cTempl.npcybc, cTempl.npcybr]
+			templates: (!camClassicMode()) ? [cTempl.cocybth, cTempl.npcybc, cTempl.npcybr] : [cTempl.npcybf, cTempl.npcybc, cTempl.npcybr]
 		},
 		"COCyborgFactoryR": {
 			assembly: "COCyborgFactoryRAssembly",
@@ -376,7 +451,7 @@ function eventStartLevel()
 				repair: 40,
 				count: -1,
 			},
-			templates: [cTempl.npcybf, cTempl.npcybc, cTempl.npcybr]
+			templates: (!camClassicMode()) ? [cTempl.cocybth, cTempl.npcybc, cTempl.npcybr] : [cTempl.npcybf, cTempl.npcybc, cTempl.npcybr]
 		},
 		"COVtolFacLeft-Prop": {
 			order: CAM_ORDER_ATTACK,
@@ -386,7 +461,7 @@ function eventStartLevel()
 				regroup: false,
 				count: -1,
 			},
-			templates: [cTempl.commorv, cTempl.colagv]
+			templates: (!camClassicMode()) ? [cTempl.commorv, cTempl.comhcv, cTempl.commorv, cTempl.colpbv] : [cTempl.commorv, cTempl.colagv]
 		},
 		"COVtolFacRight": {
 			order: CAM_ORDER_ATTACK,
@@ -396,11 +471,11 @@ function eventStartLevel()
 				regroup: false,
 				count: -1,
 			},
-			templates: [cTempl.colagv, cTempl.commorv]
+			templates: (!camClassicMode()) ? [cTempl.colagv, cTempl.commorv, cTempl.colatv, cTempl.commorv] : [cTempl.colagv, cTempl.commorv]
 		},
 	});
 
-	camManageTrucks(THE_COLLECTIVE);
+	camManageTrucks(CAM_THE_COLLECTIVE);
 	capturedCivCount = 0;
 	civilianPosIndex = 0;
 	lastSoundTime = 0;
@@ -412,6 +487,12 @@ function eventStartLevel()
 
 	queue("activateGroups", camChangeOnDiff(camMinutesToMilliseconds(8)));
 	setTimer("truckDefense", camChangeOnDiff(camMinutesToMilliseconds(3)));
+	if (camAllowInsaneSpawns())
+	{
+		setTimer("insaneTransporterAttack", camMinutesToMilliseconds(4));
+		setTimer("insaneAttackRandom", camMinutesToMilliseconds(4.5));
+		setTimer("insaneReinforcementSpawn", camMinutesToMilliseconds(5));
+	}
 
 	truckDefense();
 }

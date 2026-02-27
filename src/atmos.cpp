@@ -33,6 +33,7 @@
 #include "loop.h"
 #include "map.h"
 #include "miscimd.h"
+#include "profiling.h"
 #include "lib/gamelib/gtime.h"
 #include <cmath>
 
@@ -65,7 +66,7 @@ enum AP_STATUS
 };
 
 static ATPART	*asAtmosParts = nullptr;
-static UDWORD	freeParticle;
+static UDWORD	freeParticle = 0;
 static WT_CLASS	weather = WT_NONE;
 
 /* Setup all the particles */
@@ -75,6 +76,10 @@ void atmosInitSystem()
 	{
 		// calloc sets all to APS_INACTIVE initially
 		asAtmosParts = (ATPART *)calloc(MAX_ATMOS_PARTICLES, sizeof(*asAtmosParts));
+		if (!asAtmosParts)
+		{
+			debug(LOG_ERROR, "Failed to initialize atmos system - memory allocation failed");
+		}
 	}
 	/* Start at the beginning */
 	freeParticle = 0;
@@ -161,7 +166,7 @@ static void processParticle(ATPART *psPart)
 						pos.z = static_cast<int>(psPart->position.z);
 						pos.y = groundHeight;
 						effectSetSize(60);
-						addEffect(&pos, EFFECT_EXPLOSION, EXPLOSION_TYPE_SPECIFIED, true, getImdFromIndex(MI_SPLASH), 0);
+						addEffect(&pos, EFFECT_EXPLOSION, EXPLOSION_TYPE_SPECIFIED, true, getDisplayImdFromIndex(MI_SPLASH), 0);
 					}
 				}
 				return;
@@ -247,9 +252,15 @@ static void atmosAddParticle(const Vector3f &pos, AP_TYPE type)
 /* Move the particles */
 void atmosUpdateSystem()
 {
+	WZ_PROFILE_SCOPE(atmosUpdateSystem);
 	UDWORD	i;
 	UDWORD	numberToAdd;
 	Vector3f pos;
+
+	if (!asAtmosParts)
+	{
+		return;
+	}
 
 	// we don't want to do any of this while paused.
 	if (!gamePaused() && weather != WT_NONE)
@@ -318,15 +329,16 @@ static inline void renderParticleInternal(ATPART *psPart, const glm::mat4 &viewM
 	/* Make it face camera */
 	/* Scale it... */
 	const glm::mat4 modelMatrix = glm::translate(dv) * rotateScaleMatrix;
-	pie_Draw3DShape(psPart->imd, 0, 0, WZCOL_WHITE, 0, 0, modelMatrix, viewMatrix);
+	pie_Draw3DShape(psPart->imd->displayModel(), 0, 0, WZCOL_WHITE, 0, 0, modelMatrix, viewMatrix);
 	/* Draw it... */
 }
 
 void atmosDrawParticles(const glm::mat4 &viewMatrix, const glm::mat4 &perspectiveViewMatrix)
 {
+	WZ_PROFILE_SCOPE(atmosDrawParticles);
 	UDWORD	i;
 
-	if (weather == WT_NONE)
+	if (weather == WT_NONE || !asAtmosParts)
 	{
 		return;
 	}

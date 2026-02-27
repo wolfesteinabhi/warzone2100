@@ -34,6 +34,7 @@
 #include "lib/framework/input.h"
 #include "lib/framework/stdio_ext.h"
 #include "lib/framework/wztime.h"
+#include "lib/framework/wzapp.h"
 #include "lib/widget/button.h"
 #include "lib/widget/editbox.h"
 #include "lib/widget/widget.h"
@@ -59,6 +60,7 @@
 #include "clparse.h"
 #include "ingameop.h"
 #include "game.h"
+#include "campaigninfo.h"
 #include "version.h"
 #define totalslots 36			// saves slots
 #define slotsInColumn 12		// # of slots in a column
@@ -253,6 +255,8 @@ bool addLoadSave(LOADSAVE_MODE savemode, const char *title)
 
 		forceHidePowerBar();
 		intRemoveReticule();
+		intHideInGameOptionsButton();
+		intHideGroupSelectionMenu();
 	}
 
 	psRequestScreen = W_SCREEN::make();
@@ -281,6 +285,19 @@ bool addLoadSave(LOADSAVE_MODE savemode, const char *title)
 	sFormInit.UserData = bLoad;
 	widgAddForm(psRequestScreen, &sFormInit);
 
+	// Add Banner Label
+	W_LABINIT sLabInit;
+	sLabInit.formID = LOADSAVE_BANNER;
+	sLabInit.FontID = font_large;
+	sLabInit.id		= LOADSAVE_LABEL;
+	sLabInit.style	= WLAB_ALIGNCENTRE;
+	sLabInit.x		= 0;
+	sLabInit.y		= 0;
+	sLabInit.width	= LOADSAVE_W - (2 * LOADSAVE_HGAP);	//LOADSAVE_W;
+	sLabInit.height = LOADSAVE_BANNER_DEPTH;		//This looks right -Q
+	sLabInit.pText	= WzString::fromUtf8(title);
+	widgAddLabel(psRequestScreen, &sLabInit);
+
 	// add cancel.
 	W_BUTINIT sButInit;
 	sButInit.formID = LOADSAVE_BANNER;
@@ -295,19 +312,6 @@ bool addLoadSave(LOADSAVE_MODE savemode, const char *title)
 	sButInit.pTip = _("Close");
 	sButInit.pDisplay = intDisplayImageHilight;
 	widgAddButton(psRequestScreen, &sButInit);
-
-	// Add Banner Label
-	W_LABINIT sLabInit;
-	sLabInit.formID = LOADSAVE_BANNER;
-	sLabInit.FontID = font_large;
-	sLabInit.id		= LOADSAVE_LABEL;
-	sLabInit.style	= WLAB_ALIGNCENTRE;
-	sLabInit.x		= 0;
-	sLabInit.y		= 0;
-	sLabInit.width	= LOADSAVE_W - (2 * LOADSAVE_HGAP);	//LOADSAVE_W;
-	sLabInit.height = LOADSAVE_BANNER_DEPTH;		//This looks right -Q
-	sLabInit.pText	= WzString::fromUtf8(title);
-	widgAddLabel(psRequestScreen, &sLabInit);
 
 	// add slots
 	sButInit = W_BUTINIT();
@@ -389,7 +393,7 @@ bool addLoadSave(LOADSAVE_MODE savemode, const char *title)
 	ASSERT(latestTagResult.has_value(), "No extractable latest tag?? - Please try re-downloading the latest official source bundle");
 	const TagVer buildTagVer = latestTagResult.value_or(TagVer());
 	try
-	{		
+	{
 		WZ_PHYSFS_enumerateFolders(NewSaveGamePath, [NewSaveGamePath, &buildTagVer, &saveGameNamesAndTimes](const char* dirName){
 			if (strcmp(dirName, "auto") == 0)
 			{
@@ -515,6 +519,7 @@ bool closeLoadSave(bool goBack)
 
 		intAddReticule();
 		intShowPowerBar();
+		intShowGroupSelectionMenu();
 	}
 
 	psRequestScreen = nullptr;
@@ -728,7 +733,8 @@ static WzString suggestSaveName(const char *saveGamePath)
 
 	WzString saveName = WzString(saveNamePartial).trimmed();
 	int similarSaveGames = 0;
-	WZ_PHYSFS_enumerateFolders(saveGamePath, [&saveName, &similarSaveGames](const char *dirName) {
+	std::vector<int> suffixArr;
+	WZ_PHYSFS_enumerateFolders(saveGamePath, [&saveName, &similarSaveGames, &suffixArr](const char *dirName) {
 		std::string dirNameStr = WzString(dirName).toStdString();
 		std::string saveNameStr = saveName.toStdString();
 		size_t pos = dirNameStr.find(saveNameStr);
@@ -749,23 +755,29 @@ static WzString suggestSaveName(const char *saveGamePath)
 		size_t lastSpace = restOfSaveName.find_last_of(" ");
 		if (lastSpace != std::string::npos)
 		{
-			if (isdigit(restOfSaveName[lastSpace + 1]))
-			{
-				std::string tempStr = restOfSaveName.substr(0, lastSpace);
-				if (tempStr.compare(saveNameStr) == 0)
-				{
-					++similarSaveGames;
-					return true;
-				}
+			// Get the suffix number
+			int converted = atoi(restOfSaveName.substr(lastSpace).c_str());
+			if (converted != 0) {
+				// Suffix is a number
+				suffixArr.push_back(converted);
 			}
 		}
 
 		return true;
 	});
-
 	if (similarSaveGames > 0)
 	{
-		saveName += " " + WzString::number(similarSaveGames + 1);
+		// Sorting the suffix numbers and determining missing saves
+		int curSaveNum = 2;
+		std::sort(suffixArr.begin(), suffixArr.end());
+		bool foundStart = false;
+		for (auto it = suffixArr.begin(); it < suffixArr.end(); it++)
+		{
+			if (*it == 2) foundStart = true;
+			if (!foundStart && *it != 2) continue;
+			if (*it == curSaveNum) curSaveNum+=1;
+		}
+		saveName += " " + WzString::number(curSaveNum);
 	}
 
 	return saveName;
@@ -793,10 +805,6 @@ static void runLoadCleanup()
 		return;
 	}
 
-	// Load a savegame.
-	unsigned campaign = getCampaign(sRequestResult);
-	setCampaignNumber(campaign);
-	debug(LOG_WZ, "Set campaign for %s to %u", sRequestResult, campaign);
 	closeLoadSave();
 }
 
@@ -1123,7 +1131,37 @@ static void freeAutoSaveSlot(SAVEGAME_LOC loc)
 	deleteSaveGame_classic(savefile);
 }
 
-bool autoSave()
+static bool doAutoSave()
+{
+	const char *dir = bMultiPlayer ? SAVEGAME_SKI_AUTO : SAVEGAME_CAM_AUTO;
+	// Backward compatibility: remove later
+	if (!freeAutoSaveSlot_old(dir))
+	{
+		// no old .gam found: check for new saves
+		freeAutoSaveSlot(bMultiPlayer ? SAVEGAME_LOC_SKI_AUTO : SAVEGAME_LOC_CAM_AUTO);
+	}
+
+	time_t now = time(nullptr);
+	struct tm timeinfo = getLocalTime(now);
+	char savedate[PATH_MAX];
+	strftime(savedate, sizeof(savedate), "%F_%H%M%S", &timeinfo);
+
+	std::string suggestedName = suggestSaveName(dir).toStdString();
+	char savefile[PATH_MAX];
+	snprintf(savefile, sizeof(savefile), "%s/%s_%s.gam", dir, suggestedName.c_str(), savedate);
+	if (saveGame(savefile, GTYPE_SAVE_MIDMISSION, true))
+	{
+		console(_("AutoSave %s"), savegameWithoutExtension(savefile));
+		return true;
+	}
+	else
+	{
+		console(_("AutoSave %s failed"), savegameWithoutExtension(savefile));
+		return false;
+	}
+}
+
+bool autoSave(bool force)
 {
 	// Bail out if we're running a _true_ multiplayer game or are playing a tutorial/debug/cheating/autogames
 	const DebugInputManager& dbgInputManager = gInputManager.debugManager();
@@ -1136,30 +1174,18 @@ bool autoSave()
 	{
 		return false;
 	}
-	const char *dir = bMultiPlayer ? SAVEGAME_SKI_AUTO : SAVEGAME_CAM_AUTO;
-	// Backward compatibility: remove later
-	if (!freeAutoSaveSlot_old(dir))
+	// Bail out if autosaves only mode and not forced
+	if (getCamTweakOption_AutosavesOnly() && !force)
 	{
-		// no old .gam found: check for new saves
-		freeAutoSaveSlot(bMultiPlayer ? SAVEGAME_LOC_SKI_AUTO : SAVEGAME_LOC_CAM_AUTO);
-	}
-	
-	time_t now = time(nullptr);
-	struct tm timeinfo = getLocalTime(now);
-	char savedate[PATH_MAX];
-	strftime(savedate, sizeof(savedate), "%F_%H%M%S", &timeinfo);
-
-	std::string suggestedName = suggestSaveName(dir).toStdString();
-	char savefile[PATH_MAX];
-	snprintf(savefile, sizeof(savefile), "%s/%s_%s.gam", dir, suggestedName.c_str(), savedate);
-	if (saveGame(savefile, GTYPE_SAVE_MIDMISSION))
-	{
-		console(_("AutoSave %s"), savegameWithoutExtension(savefile));
-		return true;
-	}
-	else
-	{
-		console(_("AutoSave %s failed"), savegameWithoutExtension(savefile));
 		return false;
 	}
+
+	console(_("AutoSaving..."));
+	// queue for next main loop run, so we have a chance to render the "AutoSaving..." message before a potential delay while autosaving
+	wzAsyncExecOnMainThread([]() {
+		ASSERT_OR_RETURN(, gameInitialised, "Skipping autosave - game no longer initialized");
+		doAutoSave();
+	});
+
+	return true; // autosave queued
 }

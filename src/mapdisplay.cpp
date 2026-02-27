@@ -38,7 +38,7 @@
 
 /* renders the Research IMDs into the surface - used by message display in
 Intelligence Map */
-void renderResearchToBuffer(RESEARCH *psResearch, UDWORD OriginX, UDWORD OriginY)
+void renderResearchToBuffer(RESEARCH *psResearch, UDWORD OriginX, UDWORD OriginY, bool rotate)
 {
 	BASE_STATS      *psResGraphic;
 	UDWORD          IMDType;
@@ -49,11 +49,11 @@ void renderResearchToBuffer(RESEARCH *psResearch, UDWORD OriginX, UDWORD OriginY
 		return;
 	}
 
-	pie_SetGeometricOffset(OriginX + 10, OriginY + 10);
+	pie_SetGeometricOffset(OriginX, OriginY + 10);
 
 	// Rotate round
 	// full rotation once every 2 seconds..
-	const int angle = (realTime % ROTATE_TIME) * 360 / ROTATE_TIME;
+	const int angle = (rotate) ? ((realTime % ROTATE_TIME) * 360 / ROTATE_TIME) : 45;
 	Vector3i Position = Vector3i( 0, 0, BUTTON_DEPTH );
 	Vector3i Rotation = Vector3i( -30, angle, 0 );
 
@@ -74,7 +74,8 @@ void renderResearchToBuffer(RESEARCH *psResearch, UDWORD OriginX, UDWORD OriginY
 				/*HACK HACK HACK!
 				if its a 'tall thin (ie tower)' structure stat with something on
 				the top - offset the position to show the object on top*/
-				if (((STRUCTURE_STATS *)psResearch->psStat)->pIMD[0]->nconnectors &&
+				const iIMDShape *pDisplayModel = ((STRUCTURE_STATS *)psResearch->psStat)->pIMD[0]->displayModel();
+				if (!pDisplayModel->connectors.empty() &&
 				    getStructureStatHeight((STRUCTURE_STATS *)psResearch->psStat) > TOWER_HEIGHT)
 				{
 					Position.y -= 30;

@@ -30,13 +30,13 @@
 #include "lib/ivis_opengl/piemode.h"
 #include "lib/ivis_opengl/piestate.h"
 #include "lib/ivis_opengl/screen.h"
+#include "lib/netplay/connection_provider_registry.h"
 #include "lib/netplay/netplay.h"	// multiplayer
 #include "lib/sound/audio.h"
 #include "lib/framework/wzapp.h"
 
 #include "clparse.h"
 #include "frontend.h"
-#include "keyedit.h"
 #include "mission.h"
 #include "multiint.h"
 #include "multilimit.h"
@@ -44,6 +44,11 @@
 #include "warzoneconfig.h"
 #include "wrappers.h"
 #include "titleui/titleui.h"
+#include "stdinreader.h"
+
+#if defined(__EMSCRIPTEN__)
+#include <emscripten.h>
+#endif
 
 struct STAR
 {
@@ -60,6 +65,7 @@ static UBYTE    scriptWinLoseVideo = PLAY_NONE;
 static HostLaunch hostlaunch = HostLaunch::Normal;  // used to detect if we are hosting a game via command line option.
 static bool bHeadlessAutoGameModeCLIOption = false;
 static bool bActualHeadlessAutoGameMode = false;
+static bool bHostLaunchStartNotReady = false;
 
 static uint32_t lastTick = 0;
 static int barLeftX, barLeftY, barRightX, barRightY, boxWidth, boxHeight, starsNum, starHeight;
@@ -97,6 +103,11 @@ static void setupLoadingScreen()
 	if (!stars)
 	{
 		stars = (STAR *)malloc(sizeof(STAR) * starsNum);
+		if (!stars)
+		{
+			starsNum = 0;
+			return;
+		}
 	}
 
 	for (i = 0; i < starsNum; ++i)
@@ -121,6 +132,12 @@ void setHostLaunch(HostLaunch value)
 	bActualHeadlessAutoGameMode = recalculateEffectiveHeadlessValue();
 }
 
+void resetHostLaunch()
+{
+	setHostLaunch(HostLaunch::Normal);
+	setHostLaunchStartNotReady(false);
+}
+
 HostLaunch getHostLaunch()
 {
 	return hostlaunch;
@@ -135,6 +152,21 @@ void setHeadlessGameMode(bool enabled)
 bool headlessGameMode()
 {
 	return bActualHeadlessAutoGameMode;
+}
+
+void setHostLaunchStartNotReady(bool value)
+{
+	bHostLaunchStartNotReady = value;
+}
+
+bool getHostLaunchStartNotReady()
+{
+	if (bHostLaunchStartNotReady && headlessGameMode() && !wz_command_interface_enabled())
+	{
+		debug(LOG_ERROR, "--autohost-not-ready specified while in headless mode without --enablecmdinterface specified. No way to start the host. Ignoring.");
+		bHostLaunchStartNotReady = false;
+	}
+	return bHostLaunchStartNotReady;
 }
 
 
@@ -155,7 +187,7 @@ TITLECODE titleLoop()
 	TITLECODE RetCode = TITLECODE_CONTINUE;
 
 	pie_SetFogStatus(false);
-	if (screen_RestartBackDrop())
+	if (!headlessGameMode() && screen_RestartBackDrop())
 	{
 		// changed value - draw the backdrop
 		// otherwise, pie_ScreenFrameRenderBegin handles drawing it
@@ -178,11 +210,9 @@ TITLECODE titleLoop()
 			else // single player
 			{
 				NetPlay.bComms = true; // use network = true
-				NetPlay.isUPNP_CONFIGURED = false;
-				NetPlay.isUPNP_ERROR = false;
 				bMultiMessages = true;
-				NETinit(true);
-				NETdiscoverUPnPDevices();
+				NETinit(war_getHostConnectionProvider());
+				NETinitPortMapping();
 			}
 			bMultiPlayer = true;
 			ingame.side = InGameSide::HOST_OR_SINGLEPLAYER;
@@ -194,9 +224,11 @@ TITLECODE titleLoop()
 		else if (strlen(iptoconnect))
 		{
 			NetPlay.bComms = true; // use network = true
-			NETinit(true);
 			// Ensure the joinGame has a place to return to
 			changeTitleMode(TITLE);
+			// Don't call `NETinit()` just yet.
+			// It will be automatically called by `joinGame()` upon connection attempt
+			// with the correct connection provider type corresponding to the connection string.
 			joinGame(iptoconnect, cliConnectToIpAsSpectator);
 		}
 		else
@@ -278,6 +310,20 @@ void loadingScreenCallback()
 	wzPumpEventsWhileLoading();
 }
 
+#if defined(__EMSCRIPTEN__)
+void wzemscripten_display_web_loading_indicator(int x)
+{
+	MAIN_THREAD_EM_ASM({
+		if (typeof wz_js_display_loading_indicator === "function") {
+			wz_js_display_loading_indicator($0);
+		}
+		else {
+			console.log('Cannot find wz_js_display_loading_indicator function');
+		}
+	}, x);
+}
+#endif
+
 // fill buffers with the static screen
 void initLoadingScreen(bool drawbdrop)
 {
@@ -286,10 +332,14 @@ void initLoadingScreen(bool drawbdrop)
 	wzShowMouse(false);
 	pie_SetFogStatus(false);
 
+#if !defined(__EMSCRIPTEN__)
 	// setup the callback....
 	resSetLoadCallback(loadingScreenCallback);
+#else
+	wzemscripten_display_web_loading_indicator(1);
+#endif
 
-	if (drawbdrop)
+	if (drawbdrop && !headlessGameMode())
 	{
 		if (!screen_GetBackDrop())
 		{
@@ -311,7 +361,11 @@ void closeLoadingScreen()
 		free(stars);
 		stars = nullptr;
 	}
+#if !defined(__EMSCRIPTEN__)
 	resSetLoadCallback(nullptr);
+#else
+	wzemscripten_display_web_loading_indicator(0);
+#endif
 }
 
 
@@ -332,6 +386,24 @@ bool displayGameOver(bool bDidit, bool showBackDrop)
 		{
 			ingame.endTime = std::chrono::steady_clock::now();
 			debug(LOG_INFO, "Game ended (duration: %lld)", (long long)std::chrono::duration_cast<std::chrono::seconds>(ingame.endTime.value() - ingame.startTime).count());
+
+			// If in blind mode, send data on who the players were
+			if (game.blindMode != BLIND_MODE::NONE)
+			{
+				if (NetPlay.isHost)
+				{
+					// Send updated player info (which will include real names, now that game has ended) to all players
+					NETSendAllPlayerInfoTo(NET_ALL_PLAYERS);
+
+					// Send the verified player identity from initial join for each player (now that game has ended)
+					for (uint32_t idx = 0; idx < MAX_CONNECTED_PLAYERS; ++idx)
+					{
+						sendMultiStatsHostVerifiedIdentities(idx);
+					}
+				}
+
+				// Note: Replay player info updating occurs as part of NETreplaySaveStop
+			}
 		}
 	}
 	if (bDidit)

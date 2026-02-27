@@ -50,7 +50,7 @@ struct FEATURE_STATS : public BASE_STATS
 
 	FEATURE_TYPE    subType = FEAT_COUNT;   ///< type of feature
 
-	iIMDShape      *psImd = nullptr;        ///< Graphic for the feature
+	iIMDBaseShape   *psImd = nullptr;        ///< Graphic for the feature
 	UWORD           baseWidth = 0;          ///< The width of the base in tiles
 	UWORD           baseBreadth = 0;        ///< The breadth of the base in tiles
 
@@ -70,6 +70,7 @@ struct FEATURE : public BASE_OBJECT
 	~FEATURE();
 
 	FEATURE_STATS const *psStats;
+	float foundationDepth;           ///< Depth of features's foundation		// DISPLAY-ONLY
 
 	inline Vector2i size() const { return psStats->size(); }
 };

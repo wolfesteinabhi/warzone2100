@@ -31,6 +31,7 @@ class FlowLayoutElementDescriptor
 public:
 	virtual ~FlowLayoutElementDescriptor() = default;
 	virtual unsigned int getWidth(size_t position, size_t length) const = 0;
+	virtual size_t getMaxElementLengthForWidth(size_t position, size_t maxWidth) const = 0;
 	virtual size_t size() const = 0;
 	virtual bool isWhitespace(size_t position) const = 0;
 	virtual bool isLineBreak(size_t position) const = 0;
@@ -101,26 +102,12 @@ private:
 
 		while (current < end)
 		{
+			auto spaceUsedForCurrentLine = nextOffset + partialWordWidth;
+			size_t fitWidth = elementDescriptor.getMaxElementLengthForWidth(current, (spaceUsedForCurrentLine <= maxWidth) ? maxWidth - spaceUsedForCurrentLine : 0);
 			size_t fragmentFits = 0;
-
-			if (nextOffset + partialWordWidth + elementDescriptor.getWidth(current, end - current) > maxWidth)
-			// fragment doesn't fit completely in the current line
+			if (fitWidth < end - current)
 			{
-				if (current > 0)
-				{
-					fragmentFits = current - 1;
-				}
-				size_t fragmentDoesntFit = end;
-				while (fragmentDoesntFit - fragmentFits > 1)
-				{
-					auto middle = (fragmentFits + fragmentDoesntFit) / 2;
-					if (nextOffset + partialWordWidth + elementDescriptor.getWidth(current, middle - current) > maxWidth)
-					{
-						fragmentDoesntFit = middle;
-					} else {
-						fragmentFits = middle;
-					}
-				}
+				fragmentFits = current + fitWidth;
 			}
 			else
 			{
@@ -247,13 +234,18 @@ public:
 	{
 		auto x0 = xOffset + x();
 		auto y0 = yOffset + y();
-		pie_UniTransBoxFill(x0, y0, x0 + width() - 1, y0 + height() - 1, textStyle.shadeColour);
+		pie_UniTransBoxFill(x0, y0 + 1, x0 + width(), y0 + 1 + height(), textStyle.shadeColour);
 		cachedText->render(x0, y0 - cachedText->aboveBase(), textStyle.fontColour);
 	}
 
 	void run(W_CONTEXT *) override
 	{
 		cachedText.tick();
+	}
+
+	void setFontColour(PIELIGHT colour)
+	{
+		textStyle.fontColour = colour;
 	}
 
 private:
@@ -265,14 +257,22 @@ class FlowLayoutStringDescriptor : public FlowLayoutElementDescriptor
 {
 	WzString text;
 	std::vector<uint32_t> textUtf32;
+	bool rightToLeft = false;
 	iV_fonts font;
 
 public:
-	FlowLayoutStringDescriptor(WzString const &newText, iV_fonts newFont): text(newText), textUtf32(newText.toUtf32()), font(newFont) {}
+	const WzString& getText() const { return text; }
+
+	FlowLayoutStringDescriptor(WzString const &newText, iV_fonts newFont, bool rtl = false): text(newText), textUtf32(newText.toUtf32()), rightToLeft(rtl), font(newFont) {}
 
 	unsigned int getWidth(size_t position, size_t length) const
 	{
 		return iV_GetTextWidth(text.substr(position, length), font);
+	}
+
+	size_t getMaxElementLengthForWidth(size_t position, size_t maxWidth) const
+	{
+		return iV_GetMaxTextRunLenForWidth(text.substr(position), font, static_cast<uint32_t>(maxWidth), rightToLeft);
 	}
 
 	size_t size() const
@@ -300,14 +300,15 @@ public:
 
 struct ParagraphTextElement: public ParagraphElement
 {
-	ParagraphTextElement(std::string const &newText, ParagraphTextStyle const &style): style(style)
+	ParagraphTextElement(WzString const &newText, ParagraphTextStyle const &style, bool rtl = false): style(style)
 	{
-		text = WzString::fromUtf8(newText);
+		text = newText;
+		rightToLeft = rtl;
 	}
 
 	void appendTo(FlowLayout &layout) override
 	{
-		layout.append(FlowLayoutStringDescriptor(text, style.font));
+		layout.append(FlowLayoutStringDescriptor(text, style.font, rightToLeft));
 	}
 
 	std::shared_ptr<WIDGET> createFragmentWidget(Paragraph &paragraph, FlowLayoutFragment const &fragment) override
@@ -326,7 +327,7 @@ struct ParagraphTextElement: public ParagraphElement
 
 	void destroyFragments(Paragraph &paragraph) override
 	{
-		for (auto fragment: fragments)
+		for (auto& fragment: fragments)
 		{
 			paragraph.detach(fragment);
 		}
@@ -339,10 +340,20 @@ struct ParagraphTextElement: public ParagraphElement
 		return iV_GetTextAboveBase(style.font);
 	}
 
+	void setFontColour(PIELIGHT colour)
+	{
+		style.fontColour = colour;
+		for (auto& fragment: fragments)
+		{
+			fragment->setFontColour(colour);
+		}
+	}
+
 private:
 	WzString text;
 	ParagraphTextStyle style;
-	std::vector<std::shared_ptr<WIDGET>> fragments;
+	bool rightToLeft = false;
+	std::vector<std::shared_ptr<ParagraphTextWidget>> fragments;
 };
 
 struct ParagraphWidgetElement: public ParagraphElement, FlowLayoutElementDescriptor
@@ -356,14 +367,34 @@ struct ParagraphWidgetElement: public ParagraphElement, FlowLayoutElementDescrip
 		return position == 0 ? widget->width() : 0;
 	}
 
+	size_t getMaxElementLengthForWidth(size_t position, size_t maxWidth) const override
+	{
+		if (position == 0)
+		{
+			if (widget->width() <= maxWidth)
+			{
+				return size();
+			}
+			else
+			{
+				return 0;
+			}
+		}
+		if (position > size())
+		{
+			return 0;
+		}
+		return size() - position;
+	}
+
 	size_t size() const override
 	{
-		return 1;
+		return 2; // + 1 for "whitespace" at end
 	}
 
 	bool isWhitespace(size_t position) const override
 	{
-		return false;
+		return (position > 0);
 	}
 
 	bool isLineBreak(size_t position) const override
@@ -430,14 +461,20 @@ void Paragraph::updateLayout()
 	{
 		element->destroyFragments(*this);
 	}
+	scrollSnapOffsets.clear();
 
 	auto nextLineOffset = 0;
 	auto totalHeight = 0;
-	for (const auto& line : calculateLinesLayout())
+	auto linesLayout = calculateLinesLayout();
+	scrollSnapOffsets.reserve(linesLayout.size());
+	for (const auto& line : linesLayout)
 	{
 		std::vector<WIDGET *> lineFragments;
 		auto aboveBase = 0;
 		auto belowBase = 0;
+
+		scrollSnapOffsets.push_back(nextLineOffset);
+
 		for (auto fragmentDescriptor: line)
 		{
 			auto fragment = elements[fragmentDescriptor.elementId]->createFragmentWidget(*this, fragmentDescriptor);
@@ -477,17 +514,29 @@ std::vector<std::vector<FlowLayoutFragment>> Paragraph::calculateLinesLayout()
 	return flowLayout.getLines();
 }
 
-void Paragraph::addText(std::string const &text)
+void Paragraph::addText(const WzString &text)
 {
 	layoutDirty = true;
-	elements.push_back(std::unique_ptr<ParagraphTextElement>(new ParagraphTextElement(text, textStyle)));
+	auto textRuns = iV_SplitTextParagraphIntoRuns(text, textStyle.font);
+	if (textRuns.size() > 1)
+	{
+		for (const auto& run : textRuns)
+		{
+			auto runText = text.substr(run.startOffset, run.endOffset - run.startOffset);
+			elements.push_back(std::make_unique<ParagraphTextElement>(runText, textStyle, run.rightToLeft));
+		}
+	}
+	else
+	{
+		elements.push_back(std::make_unique<ParagraphTextElement>(text, textStyle));
+	}
 }
 
 void Paragraph::addWidget(const std::shared_ptr<WIDGET> &widget, int32_t aboveBase)
 {
 	layoutDirty = true;
 	attach(widget);
-	elements.push_back(std::unique_ptr<ParagraphWidgetElement>(new ParagraphWidgetElement(widget, aboveBase)));
+	elements.push_back(std::make_unique<ParagraphWidgetElement>(widget, aboveBase));
 }
 
 void Paragraph::geometryChanged()
@@ -503,7 +552,11 @@ void Paragraph::geometryChanged()
 void Paragraph::displayRecursive(WidgetGraphicsContext const& context)
 {
 	updateLayout();
-	WIDGET::displayRecursive(context);
+
+	auto overrideContext = context
+		.setAllowChildDisplayRecursiveIfSelfClipped(true);
+
+	WIDGET::displayRecursive(overrideContext);
 }
 
 void Paragraph::display(int xOffset, int yOffset)
@@ -557,4 +610,25 @@ void Paragraph::highlightLost()
 {
 	isMouseDown = false;
 	dirty = true;
+}
+
+nonstd::optional<std::vector<uint32_t>> Paragraph::getScrollSnapOffsets()
+{
+	return scrollSnapOffsets;
+}
+
+void Paragraph::forceSetAllFontColor(PIELIGHT colour)
+{
+	// set for any newly-added text
+	setFontColour(colour);
+
+	// set for all existing text
+	for (auto &element: elements)
+	{
+		auto psTextElement = dynamic_cast<ParagraphTextElement*>(element.get());
+		if (psTextElement)
+		{
+			psTextElement->setFontColour(colour);
+		}
+	}
 }

@@ -6,15 +6,16 @@ var tutState;
 var didTheyHelpBuildGen;
 var producedUnits;
 var firstTruckID;
+var redisplayObj;
 
 //Alias for button
-const CLOSE_BUTTON = 0;
-const PRODUCTION_BUTTON = 1;
-const RESEARCH_BUTTON = 2;
-const BUILD_BUTTON = 3;
-const DESIGN_BUTTON = 4;
-const INTEL_BUTTON = 5;
-const COMMAND_BUTTON = 6;
+const MIS_CLOSE_BUTTON = 0;
+const MIS_PRODUCTION_BUTTON = 1;
+const MIS_RESEARCH_BUTTON = 2;
+const MIS_BUILD_BUTTON = 3;
+const MIS_DESIGN_BUTTON = 4;
+const MIS_INTEL_BUTTON = 5;
+const MIS_COMMAND_BUTTON = 6;
 
 //consoleVar is an array of objects used to hold information about the following:
 //1. audio: What sound file to play.
@@ -77,6 +78,7 @@ function setUpConsoleAndAudioVar()
 		{"audio": "tut51.ogg", "clear": false, "message": _("Please wait whilst the factory manufactures the new unit(s)"), "state": 25, "wait": 2},
 		//==PART FIVE== They've built their first droid.
 		{"audio": "tut81.ogg", "clear": false, "message": _("Congratulations commander - you are ready for your first mission"), "state": 26, "wait": 2},
+		{"audio": undefined, "clear": false, "message": _("Tutorial is over. Press Esc or the gear icon to quit to the main menu."), "state": 26, "wait": 5},
 	];
 }
 
@@ -87,11 +89,11 @@ function increaseTutorialState()
 
 function grantStartTech()
 {
-	const TECH = [
+	const tech = [
 		"R-Vehicle-Body01", "R-Vehicle-Prop-Wheels"
 	];
 
-	camCompleteRequiredResearch(TECH, CAM_HUMAN_PLAYER);
+	camCompleteRequiredResearch(tech, CAM_HUMAN_PLAYER);
 }
 
 function playFactoryViperBuildVideo()
@@ -116,7 +118,7 @@ function eventDroidBuilt(droid, structure)
 		if (producedUnits.truck === true && producedUnits.tank === true)
 		{
 			increaseTutorialState();
-			setReticuleButton(PRODUCTION_BUTTON, _("Manufacture - build factory first"), "", "");
+			setReticuleButton(MIS_PRODUCTION_BUTTON, _("Manufacture - build factory first"), "", "");
 		}
 	}
 }
@@ -126,10 +128,10 @@ function eventDeliveryPointMoved()
 	if (tutState === 23)
 	{
 		increaseTutorialState();
-		setReticuleButton(PRODUCTION_BUTTON, _("Manufacture (F1)"), "image_manufacture_up.png", "image_manufacture_down.png");
+		setReticuleButton(MIS_PRODUCTION_BUTTON, _("Manufacture (F1)"), "image_manufacture_up.png", "image_manufacture_down.png");
 		// Change: Allow player to produce the truck.
 		completeResearch("R-Sys-Spade1Mk1", CAM_HUMAN_PLAYER);
-		setReticuleFlash(PRODUCTION_BUTTON, true);
+		setReticuleFlash(MIS_PRODUCTION_BUTTON, true);
 	}
 }
 
@@ -138,24 +140,24 @@ function eventMenuManufacture()
 	if (tutState === 24)
 	{
 		increaseTutorialState();
-		setReticuleFlash(PRODUCTION_BUTTON, false);
+		setReticuleFlash(MIS_PRODUCTION_BUTTON, false);
 	}
 }
 
 //show the build button
 function enableBuild()
 {
-	setReticuleButton(BUILD_BUTTON, _("Build (F3)"), "image_build_up.png", "image_build_down.png");
-	setReticuleFlash(BUILD_BUTTON, true);
-	enableStructure("A0PowerGenerator", CAM_HUMAN_PLAYER);
+	setReticuleButton(MIS_BUILD_BUTTON, _("Build (F3)"), "image_build_up.png", "image_build_down.png");
+	setReticuleFlash(MIS_BUILD_BUTTON, true);
+	enableStructure(cam_base_structures.powerGenerator, CAM_HUMAN_PLAYER);
 }
 
 //show the research button
 function enableRes()
 {
-	setReticuleButton(RESEARCH_BUTTON, _("Research (F2)"), "image_research_up.png", "image_research_down.png");
-	setReticuleFlash(RESEARCH_BUTTON, true);
-	enableStructure("A0ResearchFacility", CAM_HUMAN_PLAYER);
+	setReticuleButton(MIS_RESEARCH_BUTTON, _("Research (F2)"), "image_research_up.png", "image_research_down.png");
+	setReticuleFlash(MIS_RESEARCH_BUTTON, true);
+	enableStructure(cam_base_structures.researchLab, CAM_HUMAN_PLAYER);
 }
 
 //They clicked the button so turn off flash
@@ -164,17 +166,17 @@ function eventMenuBuild()
 	if (tutState === 2) //power generator
 	{
 		increaseTutorialState();
-		setReticuleFlash(BUILD_BUTTON, false);
+		setReticuleFlash(MIS_BUILD_BUTTON, false);
 	}
 	else if (tutState === 9) // research facility
 	{
 		increaseTutorialState();
-		setReticuleFlash(BUILD_BUTTON, false);
+		setReticuleFlash(MIS_BUILD_BUTTON, false);
 	}
 	else if (tutState === 20)
 	{
 		increaseTutorialState();
-		setReticuleFlash(BUILD_BUTTON, false);
+		setReticuleFlash(MIS_BUILD_BUTTON, false);
 	}
 }
 
@@ -184,7 +186,7 @@ function eventMenuResearch()
 	if (tutState === 12)
 	{
 		increaseTutorialState();
-		setReticuleFlash(RESEARCH_BUTTON, false);
+		setReticuleFlash(MIS_RESEARCH_BUTTON, false);
 	}
 }
 
@@ -211,8 +213,8 @@ function eventResearched(research)
 	if (tutState === 14)
 	{
 		increaseTutorialState();
-		setReticuleButton(DESIGN_BUTTON, _("Design (F4)"), "image_design_up.png", "image_design_down.png");
-		setReticuleFlash(DESIGN_BUTTON, true);
+		setReticuleButton(MIS_DESIGN_BUTTON, _("Design (F4)"), "image_design_up.png", "image_design_down.png");
+		setReticuleFlash(MIS_DESIGN_BUTTON, true);
 	}
 }
 
@@ -221,7 +223,7 @@ function eventMenuResearchSelected()
 	if (tutState === 13)
 	{
 		increaseTutorialState();
-		setReticuleButton(RESEARCH_BUTTON, _("Research - build research facility first"), "", "");
+		setReticuleButton(MIS_RESEARCH_BUTTON, _("Research - build research facility first"), "", "");
 	}
 }
 
@@ -230,7 +232,7 @@ function eventMenuDesign()
 	if (tutState === 15)
 	{
 		increaseTutorialState();
-		setReticuleFlash(DESIGN_BUTTON, false);
+		setReticuleFlash(MIS_DESIGN_BUTTON, false);
 	}
 }
 
@@ -255,8 +257,8 @@ function eventDesignWeapon()
 	if (tutState === 18)
 	{
 		increaseTutorialState();
-		setReticuleButton(CLOSE_BUTTON, _("Close"), "image_cancel_up.png", "image_cancel_down.png");
-		setReticuleFlash(CLOSE_BUTTON, true);
+		setReticuleButton(MIS_CLOSE_BUTTON, _("Close"), "image_cancel_up.png", "image_cancel_down.png");
+		setReticuleFlash(MIS_CLOSE_BUTTON, true);
 	}
 }
 
@@ -265,11 +267,11 @@ function eventDesignQuit()
 	if (tutState === 19)
 	{
 		increaseTutorialState();
-		setReticuleButton(DESIGN_BUTTON, _("Design - construct HQ first"), "", "");
-		enableStructure("A0LightFactory", CAM_HUMAN_PLAYER);
-		setReticuleFlash(CLOSE_BUTTON, false);
-		setReticuleButton(BUILD_BUTTON, _("Build (F3)"), "image_build_up.png", "image_build_down.png");
-		setReticuleFlash(BUILD_BUTTON, true);
+		setReticuleButton(MIS_DESIGN_BUTTON, _("Design - construct HQ first"), "", "");
+		enableStructure(cam_base_structures.factory, CAM_HUMAN_PLAYER);
+		setReticuleFlash(MIS_CLOSE_BUTTON, false);
+		setReticuleButton(MIS_BUILD_BUTTON, _("Build (F3)"), "image_build_up.png", "image_build_down.png");
+		setReticuleFlash(MIS_BUILD_BUTTON, true);
 		enableTemplate("ConstructionDroid");
 	}
 }
@@ -279,16 +281,16 @@ function checkForPowGen()
 {
 	if (tutState === 4)
 	{
-		if (countStruct("A0PowerGenerator", CAM_HUMAN_PLAYER) > 0)
+		if (countStruct(cam_base_structures.powerGenerator, CAM_HUMAN_PLAYER) > 0)
 		{
-			setReticuleButton(BUILD_BUTTON, _("Build - manufacture constructor droids first"), "", "");
+			setReticuleButton(MIS_BUILD_BUTTON, _("Build - manufacture constructor droids first"), "", "");
 			increaseTutorialState();
 
 			//Get the truck that is building the generator and store its ID.
-			var trucks = enumDroid(CAM_HUMAN_PLAYER, DROID_CONSTRUCT);
+			const trucks = enumDroid(CAM_HUMAN_PLAYER, DROID_CONSTRUCT);
 			for (let i = 0, len = trucks.length; i < len; ++i)
 			{
-				var truck = trucks[i];
+				const truck = trucks[i];
 				if (truck.order === DORDER_BUILD)
 				{
 					firstTruckID = truck.id;
@@ -312,9 +314,9 @@ function checkResFac()
 {
 	if (tutState === 11)
 	{
-		if (countStruct("A0ResearchFacility", CAM_HUMAN_PLAYER) > 0)
+		if (countStruct(cam_base_structures.researchLab, CAM_HUMAN_PLAYER) > 0)
 		{
-			setReticuleButton(BUILD_BUTTON, _("Build - manufacture constructor droids first"), "", "");
+			setReticuleButton(MIS_BUILD_BUTTON, _("Build - manufacture constructor droids first"), "", "");
 		}
 		else
 		{
@@ -328,10 +330,10 @@ function checkHelpBuild()
 {
 	if (tutState === 6)
 	{
-		var objects = enumDroid(CAM_HUMAN_PLAYER);
+		const objects = enumDroid(CAM_HUMAN_PLAYER);
 		for (let i = 0, l = objects.length; i < l; ++i)
 		{
-			var obj = objects[i];
+			const obj = objects[i];
 			if (obj.type === DROID &&
 				obj.droidType === DROID_CONSTRUCT &&
 				(obj.order === DORDER_HELPBUILD || obj.order === DORDER_BUILD) &&
@@ -358,9 +360,9 @@ function eventPickup(feature, droid)
 	if (tutState === 8)
 	{
 		increaseTutorialState();
-		setReticuleButton(BUILD_BUTTON, _("Build (F3)"), "image_build_up.png", "image_build_down.png");
-		setReticuleFlash(BUILD_BUTTON, true);
-		enableStructure("A0ResearchFacility", CAM_HUMAN_PLAYER);
+		setReticuleButton(MIS_BUILD_BUTTON, _("Build (F3)"), "image_build_up.png", "image_build_down.png");
+		setReticuleFlash(MIS_BUILD_BUTTON, true);
+		enableStructure(cam_base_structures.researchLab, CAM_HUMAN_PLAYER);
 	}
 }
 
@@ -370,9 +372,17 @@ function addToConsole()
 {
 	if (consoleVar.length)
 	{
-		var tutPhase = consoleVar[0];
+		const tutPhase = consoleVar[0];
 		if (tutPhase.state <= tutState)
 		{
+			if (tutPhase.state > redisplayObj.currentState)
+			{
+				redisplayObj.messages = [];
+			}
+
+			redisplayObj.timeSinceStateChange = gameTime;
+			redisplayObj.currentState = tutPhase.state;
+
 			//Check if we need to wait
 			if (camDef(tutPhase.wait) && tutPhase.wait > 0)
 			{
@@ -399,6 +409,7 @@ function addToConsole()
 			if (camDef(tutPhase.message))
 			{
 				console(tutPhase.message);
+				redisplayObj.messages.push(tutPhase.message);
 			}
 
 			camTrace(tutState);
@@ -411,20 +422,20 @@ function addToConsole()
 
 function eventSelectionChanged(objects)
 {
-	var tut0 = tutState === 0 && consoleVar.length;
-	var tut5 = tutState === 5 && consoleVar.length;
+	const tut0 = tutState === 0 && consoleVar.length;
+	const tut5 = tutState === 5 && consoleVar.length;
 
 	if (tut0 || tut5)
 	{
 		//Check if they selected a truck.
 		for (let i = 0, l = objects.length; i < l; ++i)
 		{
-			var obj = objects[i];
+			const obj = objects[i];
 			if (obj.type === DROID && obj.droidType === DROID_CONSTRUCT)
 			{
 				if (tut0)
 				{
-					enableStructure("A0ResourceExtractor", CAM_HUMAN_PLAYER);
+					enableStructure(cam_base_structures.derrick, CAM_HUMAN_PLAYER);
 					increaseTutorialState();
 				}
 				else if (tut5 && obj.id !== firstTruckID)
@@ -469,7 +480,7 @@ function eventStructureBuilt(structure, droid)
 	else if (tutState === 22 && structure.stattype === FACTORY)
 	{
 		increaseTutorialState();
-		setReticuleButton(BUILD_BUTTON, _("Build - manufacture constructor droids first"), "", "");
+		setReticuleButton(MIS_BUILD_BUTTON, _("Build - manufacture constructor droids first"), "", "");
 	}
 }
 
@@ -477,6 +488,21 @@ function eventGameInit()
 {
 	setRevealStatus(true); // light tiles.
 	setTutorialMode(true);
+}
+
+function redisplayCurrentConsoleMessages()
+{
+	if (gameTime < (redisplayObj.timeSinceStateChange + camSecondsToMilliseconds(20)))
+	{
+		return;
+	}
+
+	redisplayObj.timeSinceStateChange = gameTime; // Must reset time if calling this on a fast timer.
+
+	for (let i = 0, len = redisplayObj.messages.length; i < len; ++i)
+	{
+		console(redisplayObj.messages[i]);
+	}
 }
 
 //No way of winning if the extra victory callback does nothing.
@@ -487,7 +513,7 @@ function eventStartLevel()
 	camSetStandardWinLossConditions(CAM_VICTORY_STANDARD, undefined, {
 		callback: "noWinningForYou"
 	});
-	var startpos = getObject("startPosition");
+	const startPos = getObject("startPosition");
 	tutState = 0;
 	didTheyHelpBuildGen = false;
 	firstTruckID = 0;
@@ -495,33 +521,36 @@ function eventStartLevel()
 		tank: false,
 		truck: false,
 	};
+	redisplayObj = {
+		timeSinceStateChange: 0,
+		messages: [],
+		currentState: 0
+	};
 	setUpConsoleAndAudioVar();
 
-	centreView(startpos.x, startpos.y);
-	setMissionTime(-1);
+	centreView(startPos.x, startPos.y);
+	camSetMissionTimer(-1);
 	setPower(500, CAM_HUMAN_PLAYER);
 	hackStopIngameAudio();
 
 	grantStartTech();
-	setStructureLimits("A0LightFactory", 1, CAM_HUMAN_PLAYER);
-	setStructureLimits("A0ResourceExtractor", 1, CAM_HUMAN_PLAYER);
-	setStructureLimits("A0PowerGenerator", 1, CAM_HUMAN_PLAYER);
-	setStructureLimits("A0ResearchFacility", 1, CAM_HUMAN_PLAYER);
-
-	camSafeRemoveObject("mgArtifact", false);
-	addFeature("OilResource", 24, 26);
+	setStructureLimits(cam_base_structures.factory, 1, CAM_HUMAN_PLAYER);
+	setStructureLimits(cam_base_structures.derrick, 1, CAM_HUMAN_PLAYER);
+	setStructureLimits(cam_base_structures.powerGenerator, 1, CAM_HUMAN_PLAYER);
+	setStructureLimits(cam_base_structures.researchLab, 1, CAM_HUMAN_PLAYER);
 
 	setMiniMap(true);
 	setDesign(false);
 
 	showInterface(); // init buttons. This MUST come before setting the reticule button data
-	setReticuleButton(CLOSE_BUTTON, _("Close"), "", "");
-	setReticuleButton(PRODUCTION_BUTTON, _("Manufacture - build factory first"), "", "");
-	setReticuleButton(RESEARCH_BUTTON, _("Research - build research facility first"), "", "");
-	setReticuleButton(BUILD_BUTTON, _("Build - manufacture constructor droids first"), "", "");
-	setReticuleButton(DESIGN_BUTTON, _("Design - construct HQ first"), "", "");
-	setReticuleButton(INTEL_BUTTON, _("Intelligence Display (F5)"), "", "");
-	setReticuleButton(COMMAND_BUTTON, _("Commanders - manufacture commanders first"), "", "");
+	setReticuleButton(MIS_CLOSE_BUTTON, _("Close"), "", "");
+	setReticuleButton(MIS_PRODUCTION_BUTTON, _("Manufacture - build factory first"), "", "");
+	setReticuleButton(MIS_RESEARCH_BUTTON, _("Research - build research facility first"), "", "");
+	setReticuleButton(MIS_BUILD_BUTTON, _("Build - manufacture constructor droids first"), "", "");
+	setReticuleButton(MIS_DESIGN_BUTTON, _("Design - construct HQ first"), "", "");
+	setReticuleButton(MIS_INTEL_BUTTON, _("Intelligence Display (F5)"), "", "");
+	setReticuleButton(MIS_COMMAND_BUTTON, _("Commanders - manufacture commanders first"), "", "");
 
 	queue("addToConsole", camSecondsToMilliseconds(2));
+	setTimer("redisplayCurrentConsoleMessages", camSecondsToMilliseconds(1));
 }

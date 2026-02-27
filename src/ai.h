@@ -42,6 +42,7 @@ enum AllianceType
 	ALLIANCES_TEAMS,     // Alliances are set before the game.
 	ALLIANCES_UNSHARED,  // Alliances are set before the game. No shared research.
 };
+constexpr AllianceType ALLIANCE_TYPE_MAX = AllianceType::ALLIANCES_UNSHARED;
 
 /// Amount of time to rage at the world when frustrated (10 seconds)
 #define FRUSTRATED_TIME (1000 * 10)
@@ -68,7 +69,7 @@ void aiUpdateDroid(DROID *psDroid);
 int aiBestNearestTarget(DROID *psDroid, BASE_OBJECT **ppsObj, int weapon_slot, int extraRange = 0);
 
 // Are there a lot of bullets heading towards the structure?
-bool aiObjectIsProbablyDoomed(BASE_OBJECT *psObject, bool isDirect);
+bool aiObjectIsProbablyDoomed(BASE_OBJECT const *psObject, bool isDirect);
 
 // Update the expected damage of the object.
 void aiObjectAddExpectedDamage(BASE_OBJECT *psObject, SDWORD damage, bool isDirect);
@@ -82,9 +83,9 @@ bool aiChooseSensorTarget(BASE_OBJECT *psObj, BASE_OBJECT **ppsTarget);
 
 /*set of rules which determine whether the weapon associated with the object
 can fire on the propulsion type of the target*/
-bool validTarget(BASE_OBJECT *psObject, BASE_OBJECT *psTarget, int weapon_slot);
+bool validTarget(BASE_OBJECT const *psObject, BASE_OBJECT const *psTarget, int weapon_slot);
 // Check if any of the weapons can target the target
-bool checkAnyWeaponsTarget(BASE_OBJECT *psObject, BASE_OBJECT *psTarget);
+bool checkAnyWeaponsTarget(BASE_OBJECT const *psObject, BASE_OBJECT const *psTarget);
 // Check properties of the AllianceType enum.
 static inline bool alliancesFixed(int t)
 {

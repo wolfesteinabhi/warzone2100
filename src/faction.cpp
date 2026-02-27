@@ -23,6 +23,7 @@
 #include "faction.h"
 #include "lib/framework/frame.h"
 #include "lib/netplay/netplay.h"
+#include "lib/ivis_opengl/ivisdef.h"
 #include <array>
 
 std::array<FACTION, NUM_FACTIONS> getInitialFactionsMappingTable()
@@ -71,7 +72,8 @@ std::array<FACTION, NUM_FACTIONS> getInitialFactionsMappingTable()
 				{"vtolfactory_module2.pie", "vtolfactory_module2_nex.pie"},
 				{"blderik_anim.pie", "blderik_anim_nex.pie"},
 				{"blderik.pie", "blderik_nex.pie"},
-				{"blmrtpit.pie", "blmrtpit_nex.pie"}
+				{"blmrtpit.pie", "blmrtpit_nex.pie"},
+				{"stwpfcan.pie", "stwpfcan_nex.pie"}
 			}
 		},
 		FACTION {
@@ -93,7 +95,7 @@ std::array<FACTION, NUM_FACTIONS> getInitialFactionsMappingTable()
 				{"blbdrdcm.pie", "blbdrdcm_col.pie"},
 				{"blpower0.pie", "blpower0_col.pie"},
 				{"blpower4.pie", "blpower4_col.pie"},
-	//			{"blpilbox.pie", "blpilbox_nex.pie"},
+				{"blpilbox.pie", "blpilbox_col.pie"},
 				{"blfact0.pie", "blfact0_col.pie"},
 				{"factory_module1.pie", "factory_module1_col.pie"},
 				{"blfact1.pie", "blfact1_col.pie"},
@@ -103,9 +105,9 @@ std::array<FACTION, NUM_FACTIONS> getInitialFactionsMappingTable()
 				{"bldrdcm0.pie", "bldrdcm0_col.pie"},
 				{"blcfact1.pie", "blcfact1_col.pie"},
 				{"blbcfact.pie", "blbcfact_col.pie"},
-	//			{"blcanpil.pie", "blcanpil_nex.pie"},
-	//			{"blhowmnt.pie", "blhowmnt_nex.pie"},
-	//			{"blguardm.pie", "blguardm_nex.pie"},
+				{"blcanpil.pie", "blcanpil_col.pie"},
+	//			{"blhowmnt.pie", "blhowmnt_col.pie"},
+	//			{"blguardm.pie", "blguardm_col.pie"},
 				{"blvfact0.pie", "blvfact0_col.pie"},
 				{"blvfact1.pie", "blvfact1_col.pie"},
 				{"blvfact2.pie", "blvfact2_col.pie"},
@@ -113,7 +115,8 @@ std::array<FACTION, NUM_FACTIONS> getInitialFactionsMappingTable()
 				{"vtolfactory_module2.pie", "vtolfactory_module2_col.pie"},
 				{"blderik_anim.pie", "blderik_anim_col.pie"},
 				{"blderik.pie", "blderik_col.pie"},
-	//			{"blmrtpit.pie", "blmrtpit_nex.pie"}
+				{"blmrtpit.pie", "blmrtpit_col.pie"},
+				{"stwpfcan.pie", "stwpfcan_col.pie"}
 			}
 		}
 	};
@@ -142,7 +145,7 @@ optional<WzString> getFactionModelName(const FactionID faction, const WzString& 
 	return getFactionModelName(getFactionByID(faction), normalFactionName);
 }
 
-iIMDShape* getFactionIMD(const FACTION *faction, iIMDShape* imd)
+const iIMDShape* getFactionDisplayIMD(const FACTION *faction, const iIMDShape* imd)
 {
 	auto factionModelName = getFactionModelName(faction, modelName(imd));
 	if (!factionModelName.has_value())
@@ -151,7 +154,8 @@ iIMDShape* getFactionIMD(const FACTION *faction, iIMDShape* imd)
 	}
 	else
 	{
-		return modelGet(factionModelName.value());
+		auto baseModel = modelGet(factionModelName.value());
+		return (baseModel) ? baseModel->displayModel() : imd;
 	}
 }
 
@@ -216,18 +220,4 @@ const char* to_localized_string(FactionID faction)
 			return _("Collective");
 	}
 	return ""; // silence warning - switch above should be complete
-}
-
-void addFactionModelNameMapping(FACTION *faction, const WzString& normalFactionName, const WzString& mappedName)
-{
-	auto result = faction->replaceIMD.insert(FACTION::ReplaceIMDMap::value_type(normalFactionName, mappedName));
-	if (!result.second)
-	{
-		debug(LOG_INFO, "Already inserted this mapping (%s: %s -> %s)", faction->name.toUtf8().c_str(), normalFactionName.toUtf8().c_str(), mappedName.toUtf8().c_str());
-	}
-}
-
-void addFactionModelNameMapping(FactionID faction, const WzString& normalFactionName, const WzString& mappedName)
-{
-	addFactionModelNameMapping(&(factions[(uint8_t)faction]), normalFactionName, mappedName);
 }

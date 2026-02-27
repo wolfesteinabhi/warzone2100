@@ -1,7 +1,7 @@
 /*
 	This file is part of Warzone 2100.
 	Copyright (C) 1999-2004  Eidos Interactive
-	Copyright (C) 2005-2020  Warzone 2100 Project
+	Copyright (C) 2005-2025  Warzone 2100 Project
 
 	Warzone 2100 is free software; you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -26,6 +26,7 @@
 
 #include "lib/framework/frame.h"
 
+#include <sstream>
 #include <string.h>
 #include <physfs.h>
 
@@ -148,6 +149,9 @@ public:
 	// Returns whether an error occurred trying to get the video data
 	bool getVideoDataError(const WzString& videoName);
 
+	// Cancel video download
+	bool cancelDownloadRequest(const WzString& videoName);
+
 	// Clear all cached requests
 	void clear();
 
@@ -180,6 +184,7 @@ private:
 	private:
 		AsyncURLRequestHandle requestHandle;
 		friend bool OnDemandVideoDownloader::requestVideoData(const WzString& videoName);
+		friend bool OnDemandVideoDownloader::cancelDownloadRequest(const WzString& videoName);
 	};
 	std::unordered_map<WzString, std::shared_ptr<RequestDetails>> priorRequests;
 	optional<WzString> baseURLPath;
@@ -213,13 +218,14 @@ bool OnDemandVideoDownloader::requestVideoData(const WzString& videoName)
 
 	// need to request
 
-	if (!baseURLPath.has_value())
-	{
-		return false;
-	}
-
 	auto requestDetails = std::make_shared<RequestDetails>();
 	priorRequests[videoName] = requestDetails;
+
+	if (!baseURLPath.has_value())
+	{
+		requestDetails->status = RequestDetails::RequestStatus::Failure;
+		return false;
+	}
 
 	URLDataRequest urlRequest;
 	urlRequest.url = baseURLPath.value().toUtf8() + urlEncodeVideoPathComponents(videoName).toUtf8();
@@ -250,7 +256,7 @@ bool OnDemandVideoDownloader::requestVideoData(const WzString& videoName)
 			requestDetails->responseData = memoryBuffer;
 		});
 	};
-	urlRequest.onFailure = [requestDetails](const std::string& url, URLRequestFailureType type, optional<HTTPResponseDetails> transferDetails) {
+	urlRequest.onFailure = [requestDetails](const std::string& url, URLRequestFailureType type, std::shared_ptr<HTTPResponseDetails> transferDetails) {
 		std::string urlCopy = url;
 		wzAsyncExecOnMainThread([requestDetails, urlCopy]{
 			debug(LOG_INFO, "Failed to load video: %s", urlCopy.c_str());
@@ -325,6 +331,22 @@ bool OnDemandVideoDownloader::getVideoDataError(const WzString& videoName)
 		return it->second->status == RequestDetails::RequestStatus::Failure;
 	}
 	return false;
+}
+
+// Cancel video download request
+bool OnDemandVideoDownloader::cancelDownloadRequest(const WzString& videoName)
+{
+	auto it = priorRequests.find(videoName);
+	if (it == priorRequests.end())
+	{
+		return false;
+	}
+	if (it->second->requestHandle)
+	{
+		urlRequestSetCancelFlag(it->second->requestHandle);
+	}
+	priorRequests.erase(it);
+	return true;
 }
 
 void OnDemandVideoDownloader::clear()
@@ -452,13 +474,7 @@ static bool seqPlayOrQueueFetch(const WzString& videoName, const WzString& audio
 
 	// Try to find local sequences
 	WzString aVideoName = WzString("sequences/" + videoName);
-
 	PHYSFS_file *fpInfile = PHYSFS_openRead(aVideoName.toUtf8().c_str());
-	if (fpInfile == nullptr)
-	{
-		wz_info("unable to open '%s' for playback", aVideoName.toUtf8().c_str());
-		fpInfile = PHYSFS_openRead("novideo.ogg");
-	}
 
 	if (fpInfile != nullptr)
 	{
@@ -466,6 +482,23 @@ static bool seqPlayOrQueueFetch(const WzString& videoName, const WzString& audio
 	}
 	else
 	{
+		bool isNoVideo = videoName.startsWith("novideo");
+
+		if (!onDemandVideoProvider.hasBaseURLPath() || isNoVideo)
+		{
+			// no on-demand fallback available - log the failure to open local file
+			code_part log_part = LOG_INFO;
+			if (isNoVideo)
+			{
+				// in these special cases, don't clutter the logs with LOG_INFO level events
+				log_part = LOG_VIDEO;
+			}
+			debug(log_part, "unable to open '%s' for playback", aVideoName.toUtf8().c_str());
+
+			seq_Shutdown();
+			return false;
+		}
+
 		// Try to download video from on-demand provider
 		auto videoData = onDemandVideoProvider.getVideoData(videoName);
 		if (!videoData)
@@ -521,6 +554,17 @@ static bool seq_StartFullScreenVideo(const WzString& videoName, const WzString& 
 	bHoldSeqForAudio = false;
 	iV_SetTextColour(WZCOL_TEXT_BRIGHT);
 
+	if (resolution == VIDEO_USER_CHOSEN_RESOLUTION)
+	{
+		// set the dimensions to show full screen or native or ...
+		seq_SetUserResolution();
+	}
+
+	if (!seqPlayOrQueueFetch(videoName, audioName))
+	{
+		return false;
+	}
+
 	/* We do not want to enter loop_SetVideoPlaybackMode() when we are
 	 * doing intelligence videos.
 	 */
@@ -534,12 +578,9 @@ static bool seq_StartFullScreenVideo(const WzString& videoName, const WzString& 
 			loop_SetVideoPlaybackMode();
 			iV_SetTextColour(WZCOL_TEXT_BRIGHT);
 		}
-
-		// set the dimensions to show full screen or native or ...
-		seq_SetUserResolution();
 	}
 
-	return seqPlayOrQueueFetch(videoName, audioName);
+	return true;
 }
 
 void update_user_resolution()
@@ -573,7 +614,7 @@ bool seq_UpdateFullScreenVideo()
 			{
 				wzCachedSeqText.resize(2);
 			}
-			wzCachedSeqText[0].setText(WzString::fromUtf8(astringf("%s (%" PRIu32 "%%)...", _("Loading video"), onDemandVideoProvider.getVideoDataRequestProgress(currVideoName))), font_scaled);
+			wzCachedSeqText[0].setText(WzString::format("%s (%" PRIu32 "%%)...", _("Loading video"), onDemandVideoProvider.getVideoDataRequestProgress(currVideoName)), font_scaled);
 			wzCachedSeqText[0].render((pie_GetVideoBufferWidth() - wzCachedSeqText[0].width()) / 2, (pie_GetVideoBufferHeight() - wzCachedSeqText[0].height()) / 2, WZCOL_WHITE);
 			return true;
 		}
@@ -699,6 +740,7 @@ bool seq_UpdateFullScreenVideo()
 void seqReleaseAll()
 {
 	seq_Shutdown();
+	aVideoProvider.reset();
 	wzCachedSeqText.clear();
 }
 
@@ -709,8 +751,11 @@ bool seq_StopFullScreenVideo()
 		loop_ClearVideoPlaybackMode();
 	}
 
+	onDemandVideoProvider.cancelDownloadRequest(currVideoName);
+
 	seq_Shutdown();
 
+	aVideoProvider.reset();
 	wzCachedSeqText.clear();
 
 	return true;
@@ -803,15 +848,13 @@ bool seq_AddTextForVideo(const char *pText, SDWORD xOffset, SDWORD yOffset, doub
 	return true;
 }
 
-
 static bool seq_AddTextFromFile(const char *pTextName, SEQ_TEXT_POSITIONING textJustification)
 {
 	char aTextName[MAX_STR_LENGTH];
-	char *pTextBuffer, *pCurrentLine, *pText;
+	char *pTextBuffer;
 	UDWORD fileSize;
 	SDWORD xOffset, yOffset;
 	double startTime, endTime;
-	const char *seps = "\n";
 
 	// NOTE: The original game never had a fullscreen mode for FMVs on >640x480 screens.
 	// They would just use double sized videos, and move the text to that area.
@@ -827,12 +870,17 @@ static bool seq_AddTextFromFile(const char *pTextName, SEQ_TEXT_POSITIONING text
 	}
 
 	pTextBuffer = fileLoadBuffer;
-	pCurrentLine = strtok(pTextBuffer, seps);
-	while (pCurrentLine != nullptr)
+	std::istringstream stream(pTextBuffer);
+	stream.imbue(std::locale::classic());
+	std::string pCurrentLine;
+
+	while (std::getline(stream, pCurrentLine, '\n'))
 	{
-		if (*pCurrentLine != '/')
+		if (!pCurrentLine.empty() && pCurrentLine[0] != '/')
 		{
-			if (sscanf(pCurrentLine, "%d %d %lf %lf", &xOffset, &yOffset, &startTime, &endTime) == 4)
+			std::istringstream lineStream(pCurrentLine);
+			lineStream.imbue(std::locale::classic());
+			if (lineStream >> xOffset >> yOffset >> startTime >> endTime)
 			{
 				// Since all the positioning was hardcoded to specific values, we now calculate the
 				// ratio of our screen, compared to what the game expects and multiply that to x, y.
@@ -840,22 +888,17 @@ static bool seq_AddTextFromFile(const char *pTextName, SEQ_TEXT_POSITIONING text
 				xOffset = static_cast<SDWORD>((double)pie_GetVideoBufferWidth() / 640. * (double)xOffset);
 				yOffset = static_cast<SDWORD>((double)pie_GetVideoBufferHeight() / 480. * (double)yOffset);
 				//get the text
-				pText = strrchr(pCurrentLine, '"');
-				ASSERT(pText != nullptr, "error parsing text file");
-				if (pText != nullptr)
+				size_t firstQuote = pCurrentLine.find('"');
+				size_t lastQuote = pCurrentLine.rfind('"');
+
+				ASSERT(firstQuote != std::string::npos && lastQuote != std::string::npos && firstQuote < lastQuote, "error parsing text file");
+				if (firstQuote != std::string::npos && lastQuote != std::string::npos && firstQuote < lastQuote)
 				{
-					*pText = (UBYTE)0;
-				}
-				pText = strchr(pCurrentLine, '"');
-				ASSERT(pText != nullptr, "error parsing text file");
-				if (pText != nullptr)
-				{
-					seq_AddTextForVideo(_(&pText[1]), xOffset, yOffset, startTime, endTime, textJustification);
+					std::string text = pCurrentLine.substr(firstQuote + 1, lastQuote - firstQuote - 1);
+					seq_AddTextForVideo(_(text.c_str()), xOffset, yOffset, startTime, endTime, textJustification);
 				}
 			}
 		}
-		//get next line
-		pCurrentLine = strtok(nullptr, seps);
 	}
 	return true;
 }
@@ -879,7 +922,10 @@ void seq_AddSeqToList(const WzString &pSeqName, const WzString &audioName, const
 
 	ASSERT_OR_RETURN(, currentSeq < MAX_SEQ_LIST, "too many sequences");
 
-	onDemandVideoProvider.requestVideoData(pSeqName);
+	if (onDemandVideoProvider.hasBaseURLPath())
+	{
+		onDemandVideoProvider.requestVideoData(pSeqName);
+	}
 
 	//OK so add it to the list
 	aSeqList[currentSeq].pSeq = pSeqName;
@@ -922,7 +968,7 @@ bool seq_AnySeqLeft()
 	return !aSeqList[nextSeq].pSeq.isEmpty();
 }
 
-void seq_StartNextFullScreenVideo()
+bool seq_StartNextFullScreenVideo()
 {
 	bool	bPlayedOK;
 
@@ -944,6 +990,8 @@ void seq_StartNextFullScreenVideo()
 			displayGameOver(getScriptWinLoseVideo() == PLAY_WIN, false);
 		}
 	}
+
+	return bPlayedOK;
 }
 
 

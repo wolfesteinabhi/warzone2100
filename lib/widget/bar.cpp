@@ -39,8 +39,8 @@ W_BARINIT::W_BARINIT()
 	  //sCol
 	  //sMinorCol
 {
-	sCol.rgba = 0;
-	sMinorCol.rgba = 0;
+	sCol.clear();
+	sMinorCol.clear();
 }
 
 W_BARGRAPH::W_BARGRAPH(W_BARINIT const *init)
@@ -390,4 +390,9 @@ void W_BARGRAPH::display(int xOffset, int yOffset)
 void W_BARGRAPH::setTip(std::string string)
 {
 	pTip = string;
+}
+
+void W_BARGRAPH::setHelp(optional<WidgetHelp> _help)
+{
+	help = _help;
 }

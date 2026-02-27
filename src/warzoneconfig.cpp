@@ -1,7 +1,7 @@
 /*
 	This file is part of Warzone 2100.
 	Copyright (C) 1999-2004  Eidos Interactive
-	Copyright (C) 2005-2020  Warzone 2100 Project
+	Copyright (C) 2005-2024  Warzone 2100 Project
 
 	Warzone 2100 is free software; you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -28,6 +28,7 @@
 #include "lib/ivis_opengl/piestate.h"
 #include "lib/ivis_opengl/piepalette.h"
 #include "lib/sound/sounddefs.h"
+#include "lib/netplay/connection_provider_registry.h"
 #include "advvis.h"
 #include "component.h"
 #include "display.h"
@@ -40,9 +41,15 @@ constexpr int MAX_OLD_LOGS = 50;
 
 /***************************************************************************/
 
+#if !defined(__EMSCRIPTEN__)
+#define WZ_DEFAULT_FMV_MODE FMV_FULLSCREEN
+#else
+#define WZ_DEFAULT_FMV_MODE FMV_2X
+#endif
+
 struct WARZONE_GLOBALS
 {
-	FMV_MODE FMVmode = FMV_FULLSCREEN;
+	FMV_MODE FMVmode = WZ_DEFAULT_FMV_MODE;
 	UDWORD width = 1024;
 	UDWORD height = 768;
 	UDWORD videoBufferDepth = 32;
@@ -53,7 +60,7 @@ struct WARZONE_GLOBALS
 	int antialiasing = 0;
 	WINDOW_MODE Fullscreen = WINDOW_MODE::windowed; // Leave this to windowed, some system will fail and they can't see the system popup dialog!
 	bool soundEnabled = true;
-	bool trapCursor = false;
+	TrapCursorMode trapCursor = TrapCursorMode::Automatic;
 	int vsync = 1;
 	bool pauseOnFocusLoss = false;
 	bool ColouredCursor = true;
@@ -68,6 +75,9 @@ struct WARZONE_GLOBALS
 	JS_BACKEND jsBackend = (JS_BACKEND)0;
 	bool autoAdjustDisplayScale = true;
 	int autoLagKickSeconds = 60;
+	int autoLagKickAggressiveness = 3;
+	int autoDesyncKickSeconds = 10;
+	int autoNotReadyKickSeconds = 0;
 	bool disableReplayRecording = false;
 	int maxReplaysSaved = MAX_REPLAY_FILES;
 	int oldLogsLimit = MAX_OLD_LOGS;
@@ -83,8 +93,27 @@ struct WARZONE_GLOBALS
 	UDWORD fullscreenModeWidth = 0; // current display default
 	UDWORD fullscreenModeHeight = 0; // current display default
 	int fullscreenModeScreen = -1;
+	float fullscreenPixelDensity = 1.f;
+	float fullscreenRefreshRate = 0.f; // current display default
 	int toggleFullscreenMode = 0; // 0 = the backend default
 	unsigned int cursorScale = 100;
+	// shadow mapping settings
+	uint32_t shadowFilteringMode = 1;
+	uint32_t shadowFilterSize = 5;
+	uint32_t shadowMapResolution = 0; // this defaults to 0, which causes the gfx backend to figure out a recommended default based on the system properties
+	bool pointLightLighting = false;
+	// UI config
+	bool groupsMenuEnabled = true;
+	uint8_t optionsButtonVisibility = 100;
+
+	// run-time only settings (not persisted to config!)
+	bool allowVulkanImplicitLayers = false;
+
+	// Connection provider used for hosting games
+	ConnectionProviderType hostProviderType = ConnectionProviderType::TCP_DIRECT;
+
+	// audio cues
+	bool playAudioCue_GroupReporting = true;
 };
 
 static WARZONE_GLOBALS warGlobs;
@@ -177,13 +206,13 @@ int war_getAntialiasing()
 	return warGlobs.antialiasing;
 }
 
-void war_SetTrapCursor(bool b)
+void war_SetTrapCursor(TrapCursorMode v)
 {
-	warGlobs.trapCursor = b;
-	ActivityManager::instance().changedSetting("trapCursor", std::to_string(b));
+	warGlobs.trapCursor = v;
+	ActivityManager::instance().changedSetting("trapCursor", std::to_string(static_cast<int>(v)));
 }
 
-bool war_GetTrapCursor()
+TrapCursorMode war_GetTrapCursor()
 {
 	return warGlobs.trapCursor;
 }
@@ -465,9 +494,51 @@ void war_setAutoLagKickSeconds(int seconds)
 	seconds = std::max(seconds, 0);
 	if (seconds > 0)
 	{
-		seconds = std::max(seconds, 60);
+		seconds = std::max(seconds, 15);
 	}
 	warGlobs.autoLagKickSeconds = seconds;
+}
+
+int war_getAutoLagKickAggressiveness()
+{
+	return warGlobs.autoLagKickAggressiveness;
+}
+
+void war_setAutoLagKickAggressiveness(int aggressiveness)
+{
+	aggressiveness = std::max(aggressiveness, 1);
+	aggressiveness = std::min(aggressiveness, 10);
+	warGlobs.autoLagKickAggressiveness = aggressiveness;
+}
+
+int war_getAutoDesyncKickSeconds()
+{
+	return warGlobs.autoDesyncKickSeconds;
+}
+
+void war_setAutoDesyncKickSeconds(int seconds)
+{
+	seconds = std::max(seconds, 0);
+	if (seconds > 0)
+	{
+		seconds = std::max(seconds, 10);
+	}
+	warGlobs.autoDesyncKickSeconds = seconds;
+}
+
+int war_getAutoNotReadyKickSeconds()
+{
+	return warGlobs.autoNotReadyKickSeconds;
+}
+
+void war_setAutoNotReadyKickSeconds(int seconds)
+{
+	seconds = std::max(seconds, 0);
+	if (seconds > 0)
+	{
+		seconds = std::max(seconds, 15);
+	}
+	warGlobs.autoNotReadyKickSeconds = seconds;
 }
 
 bool war_getDisableReplayRecording()
@@ -598,6 +669,26 @@ int war_GetFullscreenModeScreen()
 	return warGlobs.fullscreenModeScreen;
 }
 
+float war_GetFullscreenModePixelDensity()
+{
+	return warGlobs.fullscreenPixelDensity;
+}
+
+void war_SetFullscreenModePixelDensity(float pixelDensity)
+{
+	warGlobs.fullscreenPixelDensity = pixelDensity;
+}
+
+float war_GetFullscreenModeRefreshRate()
+{
+	return warGlobs.fullscreenRefreshRate;
+}
+
+void war_SetFullscreenModeRefreshRate(float refreshRate)
+{
+	warGlobs.fullscreenRefreshRate = refreshRate;
+}
+
 void war_setToggleFullscreenMode(int mode)
 {
 	warGlobs.toggleFullscreenMode = mode;
@@ -606,4 +697,134 @@ void war_setToggleFullscreenMode(int mode)
 int war_getToggleFullscreenMode()
 {
 	return warGlobs.toggleFullscreenMode;
+}
+
+uint32_t war_getShadowFilterSize()
+{
+	return warGlobs.shadowFilterSize;
+}
+
+void war_setShadowFilterSize(uint32_t filterSize)
+{
+	if (filterSize > 7)
+	{
+		debug(LOG_INFO, "Shadow filter size %" PRIu32 " may not have the desired effect", filterSize);
+	}
+	warGlobs.shadowFilterSize = filterSize;
+}
+
+uint32_t war_getShadowMapResolution()
+{
+	return warGlobs.shadowMapResolution;
+}
+
+void war_setShadowMapResolution(uint32_t resolution)
+{
+	if (resolution > 0 && ((resolution & (resolution - 1)) != 0))
+	{
+		debug(LOG_ERROR, "Shadow map resolution %" PRIu32 " is unsupported: must be a power of 2", resolution);
+		return;
+	}
+	if (resolution > 0 && (resolution < 2048 || resolution > 4096)) // 0 is a special case that maps to "figure out a decent default for this system"
+	{
+		debug(LOG_INFO, "Shadow map resolution %" PRIu32 " may not have the desired effect", resolution);
+	}
+	warGlobs.shadowMapResolution = resolution;
+}
+
+bool war_getPointLightPerPixelLighting()
+{
+	return warGlobs.pointLightLighting;
+}
+
+void war_setPointLightPerPixelLighting(bool perPixelEnabled)
+{
+	warGlobs.pointLightLighting = perPixelEnabled;
+}
+
+bool war_getGroupsMenuEnabled()
+{
+	return warGlobs.groupsMenuEnabled;
+}
+
+void war_setGroupsMenuEnabled(bool enabled)
+{
+	warGlobs.groupsMenuEnabled = enabled;
+}
+
+void war_runtimeOnlySetAllowVulkanImplicitLayers(bool allowed) // not persisted to config
+{
+	warGlobs.allowVulkanImplicitLayers = allowed;
+}
+
+uint8_t war_getOptionsButtonVisibility()
+{
+	return warGlobs.optionsButtonVisibility;
+}
+
+void war_setOptionsButtonVisibility(uint8_t val)
+{
+	val = std::min<uint8_t>(val, 100);
+	if (val > 0)
+	{
+		val = std::max<uint8_t>(val, 50);
+	}
+	warGlobs.optionsButtonVisibility = val;
+}
+
+bool war_getAllowVulkanImplicitLayers()
+{
+	return warGlobs.allowVulkanImplicitLayers;
+}
+
+void war_setHostConnectionProvider(ConnectionProviderType pt)
+{
+	warGlobs.hostProviderType = pt;
+}
+
+ConnectionProviderType war_getHostConnectionProvider()
+{
+	return warGlobs.hostProviderType;
+}
+
+bool net_backend_from_str(const char* str, ConnectionProviderType& pt)
+{
+	if (strcasecmp(str, "tcp") == 0)
+	{
+		pt = ConnectionProviderType::TCP_DIRECT;
+		return true;
+	}
+#ifdef WZ_GNS_NETWORK_BACKEND_ENABLED
+	if (strcasecmp(str, "gns") == 0)
+	{
+		pt = ConnectionProviderType::GNS_DIRECT;
+		return true;
+	}
+#endif
+	return false;
+}
+
+std::string to_string(ConnectionProviderType pt)
+{
+	switch (pt)
+	{
+	case ConnectionProviderType::TCP_DIRECT:
+		return "tcp";
+#ifdef WZ_GNS_NETWORK_BACKEND_ENABLED
+	case ConnectionProviderType::GNS_DIRECT:
+		return "gns";
+#endif
+	}
+	ASSERT(false, "Invalid connection provider type enumeration value: %d", static_cast<int>(pt)); // silence GCC warning
+	return {};
+}
+
+bool war_getPlayAudioCue_GroupReporting()
+{
+	return warGlobs.playAudioCue_GroupReporting;
+}
+
+void war_setPlayAudioCue_GroupReporting(bool val)
+{
+	warGlobs.playAudioCue_GroupReporting = val;
 }

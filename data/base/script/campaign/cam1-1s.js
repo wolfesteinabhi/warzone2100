@@ -2,6 +2,12 @@ include("script/campaign/libcampaign.js");
 
 var cheat;
 var powModVideoPlayed;
+const mis_Labels = {
+	startPos: {x: 13, y: 52},
+	lz: {x: 10, y: 51, x2: 12, y2: 53},
+	trPlace: {x: 11, y: 52},
+	trExit: {x: 1, y: 32}
+};
 
 function eventChat(from, to, message)
 {
@@ -27,7 +33,7 @@ function secondVideo()
 //Has player built the power module?
 function powerModuleBuilt()
 {
-	var gens = enumStruct(CAM_HUMAN_PLAYER, POWER_GEN, false);
+	const gens = enumStruct(CAM_HUMAN_PLAYER, POWER_GEN, false);
 	for (let x = 0, l = gens.length; x < l; ++x)
 	{
 		if ((gens[x].modules > 0) && (gens[x].status === BUILT))
@@ -43,8 +49,8 @@ function checkForPowerModule()
 {
 	if (cheat || powerModuleBuilt())
 	{
-		camSetupTransporter(11, 52, 1, 32);
-		setMissionTime(camChangeOnDiff(camMinutesToSeconds(25))); // 25 min for offworld
+		camSetupTransporter(mis_Labels.trPlace.x, mis_Labels.trPlace.y, mis_Labels.trExit.x, mis_Labels.trExit.y);
+		camSetMissionTimer((tweakOptions.classicTimers) ? camMinutesToSeconds(15) : camChangeOnDiff(camMinutesToSeconds(25))); // 25 min for offworld
 		secondVideo();
 
 		if (powModVideoPlayed)
@@ -56,10 +62,10 @@ function checkForPowerModule()
 
 function eventStartLevel()
 {
-	centreView(13, 52);
-	setNoGoArea(10, 51, 12, 53, CAM_HUMAN_PLAYER);
-	setMissionTime(camChangeOnDiff(camMinutesToSeconds(10))); // 10 min for building module.
-	camSetStandardWinLossConditions(CAM_VICTORY_PRE_OFFWORLD, "SUB_1_1");
+	centreView(mis_Labels.startPos.x, mis_Labels.startPos.y);
+	setNoGoArea(mis_Labels.lz.x, mis_Labels.lz.y, mis_Labels.lz.x2, mis_Labels.lz.y2, CAM_HUMAN_PLAYER);
+	camSetMissionTimer((tweakOptions.classicTimers) ? -1 : camChangeOnDiff(camMinutesToSeconds(10))); // 10 min for building module.
+	camSetStandardWinLossConditions(CAM_VICTORY_PRE_OFFWORLD, cam_levels.alpha3.offWorld);
 	cheat = false;
 	powModVideoPlayed = false;
 

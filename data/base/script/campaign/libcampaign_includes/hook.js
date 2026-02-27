@@ -18,9 +18,9 @@
 //;;
 function camAreaEvent(label, callback)
 {
-	var eventName = "eventArea" + label;
+	const __EVENT_NAME = "eventArea" + label;
 	camMarkTiles(label);
-	__camPreHookEvent(eventName, function(droid)
+	__camPreHookEvent(__EVENT_NAME, function(droid)
 	{
 		if (camDef(droid))
 		{
@@ -40,7 +40,6 @@ function __camPreHookEvent(eventname, hookcode)
 	{
 		__camOriginalEvents[eventname] = __camGlobalContext()[eventname];
 	}
-
 	__camGlobalContext()[eventname] = function()
 	{
 		// Don't trigger hooks after level end.

@@ -13,7 +13,7 @@
 //;;
 function camSecondsToMilliseconds(seconds)
 {
-	return seconds * MILLISECONDS_IN_SECOND;
+	return seconds * CAM_MILLISECONDS_IN_SECOND;
 }
 
 //;; ## camMinutesToMilliseconds(minutes)
@@ -25,7 +25,7 @@ function camSecondsToMilliseconds(seconds)
 //;;
 function camMinutesToMilliseconds(minutes)
 {
-	return minutes * camSecondsToMilliseconds(SECONDS_IN_MINUTE);
+	return minutes * camSecondsToMilliseconds(CAM_SECONDS_IN_MINUTE);
 }
 
 //;; ## camMinutesToSeconds(minutes)
@@ -37,7 +37,7 @@ function camMinutesToMilliseconds(minutes)
 //;;
 function camMinutesToSeconds(minutes)
 {
-	return minutes * SECONDS_IN_MINUTE;
+	return minutes * CAM_SECONDS_IN_MINUTE;
 }
 
 //;; ## camHoursToSeconds(hours)
@@ -49,5 +49,27 @@ function camMinutesToSeconds(minutes)
 //;;
 function camHoursToSeconds(hours)
 {
-	return hours * camMinutesToSeconds(MINUTES_IN_HOUR);
+	return hours * camMinutesToSeconds(CAM_MINUTES_IN_HOUR);
+}
+
+//;; ## camSetMissionTimer(seconds)
+//;;
+//;; Sets the mission time for a level. This acts as a wrapper for `setMissionTime()`
+//;; and is mostly used to either set the time value passed (as seconds) or infinite
+//;; time if the `infiniteTime` tweak option is active.
+//;;
+//;; @param {number} time value in seconds
+//;; @returns {void}
+//;;
+function camSetMissionTimer(seconds)
+{
+	let timer = -1;
+	if (camDef(seconds) &&
+		camDef(tweakOptions.infiniteTime) &&
+		!tweakOptions.infiniteTime &&
+		(seconds >= 0))
+	{
+		timer = seconds;
+	}
+	setMissionTime(timer);
 }

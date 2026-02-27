@@ -34,15 +34,9 @@
 #define __STDC_LIMIT_MACROS
 #endif
 
-#if defined(HAVE_CONFIG_H)
-#  undef _XOPEN_SOURCE
-#  include "config.h"
-#elif !defined(HAVE_CONFIG_H)
-#  define PACKAGE "warzone2100"
-#  define PACKAGE_BUGREPORT "http://wz2100.net/"
-#  define PACKAGE_NAME "Warzone 2100"
-#  define PACKAGE_TARNAME "warzone2100"
-#endif
+// Always include generated config.h
+#undef _XOPEN_SOURCE
+#include "wz2100-generated-config.h"
 
 
 /* ---- Platform detection ---- */
@@ -161,6 +155,7 @@
 #elif defined(__INTEGRITY)
 #  define WZ_OS_INTEGRITY
 #elif defined(__MAKEDEPEND__)
+#elif defined(__EMSCRIPTEN__)
 #else
 #  error "Warzone has not been tested on this OS. Please contact warzone2100-project@lists.sourceforge.net"
 #endif /* WZ_OS_x */
@@ -387,6 +382,16 @@
 #endif
 
 
+#if defined(WZ_CC_MINGW)
+#  ifndef __MINGW_PRINTF_FORMAT
+#    define __MINGW_PRINTF_FORMAT gnu_printf
+#  endif
+#  define WZ_PRINTF_FORMAT __MINGW_PRINTF_FORMAT
+#else
+#  define WZ_PRINTF_FORMAT printf
+#endif
+
+
 /*! \def WZ_DECL_FORMAT
  * GCC: "The format attribute specifies that a function takes printf, scanf, strftime or strfmon
  *       style arguments which should be type-checked against a format string."
@@ -396,6 +401,17 @@
 	__attribute__((__format__(archetype, string_index, first_to_check)))
 #else
 #  define WZ_DECL_FORMAT(archetype, string_index, first_to_check)
+#endif
+
+/*! \def WZ_DECL_FORMAT_CXX
+ * The same as WZ_DECL_FORMAT, but for use with functions with C++ variadic templates
+ * Requires compiler support (LLVM/Clang 16+)
+ */
+#if !defined(WZ_CC_INTEL) && (defined(WZ_CC_CLANG) && defined(__clang_major__) && __clang_major__ >= 16)
+#  define WZ_DECL_FORMAT_CXX(archetype, string_index, first_to_check) \
+	__attribute__((__format__(archetype, string_index, first_to_check)))
+#else
+#  define WZ_DECL_FORMAT_CXX(archetype, string_index, first_to_check)
 #endif
 
 #if WZ_CC_GNU_PREREQ(4,9)
@@ -553,6 +569,7 @@
 #  undef NOMINMAX
 #  define NOMINMAX 1		// disable the min / max macros
 #  include <windows.h>
+#  include <algorithm>
 
 #  if defined(WZ_CC_MSVC)
 

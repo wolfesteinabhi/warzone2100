@@ -40,10 +40,12 @@ bool use_override_mods = false;
 
 static std::vector<WzMods::LoadedMod> loaded_mods;
 static std::string mod_list;
+static std::vector<std::string> mod_names_list;
 static std::vector<Sha256> mod_hash_list;
 
 
-static void addLoadedMod(std::string modname, std::string filename);
+static void addLoadedMod(std::string modname, std::string filename, const std::string& fullRealPath);
+static bool hasLoadedModRealPath(const std::string& fullRealPath);
 
 
 static inline std::vector<std::string> split(std::string const &str, std::string const &sep)
@@ -81,7 +83,7 @@ static inline std::string join(std::vector<std::string> const &strs, std::string
 	return str;
 }
 
-static WzString convertToPlatformDependentPath(const char *platformIndependentPath)
+WzString convertToPlatformDependentPath(const char *platformIndependentPath)
 {
 	WzString path(platformIndependentPath);
 
@@ -106,27 +108,61 @@ size_t addSubdirs(const char *basedir, const char *subdir, const bool appendToPa
 {
 	size_t numAddedMods = 0;
 	const WzString subdir_platformDependent = convertToPlatformDependentPath(subdir);
+	std::string tmpFullModRealPath;
 	WZ_PHYSFS_enumerateFiles(subdir, [&](const char *i) -> bool {
 #ifdef DEBUG
 		debug(LOG_NEVER, "Examining subdir: [%s]", i);
 #endif // DEBUG
 		if (i[0] != '.' && (!checkList || std::find(checkList->begin(), checkList->end(), i) != checkList->end()))
 		{
-			char tmpstr[PATH_MAX];
-			snprintf(tmpstr, sizeof(tmpstr), "%s%s%s%s", basedir, subdir_platformDependent.toUtf8().c_str(), PHYSFS_getDirSeparator(), i);
+			// platform-dependent notation
+			tmpFullModRealPath = basedir;
+			tmpFullModRealPath += subdir_platformDependent.toUtf8();
+			tmpFullModRealPath += PHYSFS_getDirSeparator();
+			tmpFullModRealPath += i;
 #ifdef DEBUG
-			debug(LOG_NEVER, "Adding [%s] to search path", tmpstr);
+			debug(LOG_NEVER, "Adding [%s] to search path", tmpFullModRealPath.c_str());
 #endif // DEBUG
-			if (addToModList)
+			if (hasLoadedModRealPath(tmpFullModRealPath))
 			{
-				std::string filename = astringf("%s/%s", subdir, i); // platform-independent notation
-				addLoadedMod(i, std::move(filename));
-				char buf[256];
-				snprintf(buf, sizeof(buf), "mod: %s", i);
-				addDumpInfo(buf);
+				debug(LOG_INFO, "Already loaded: %s, skipping", tmpFullModRealPath.c_str());
+				return true; // continue
 			}
-			PHYSFS_mount(tmpstr, NULL, appendToPath); // platform-dependent notation
-			numAddedMods++;
+			if (PHYSFS_mount(tmpFullModRealPath.c_str(), NULL, appendToPath) != 0) // platform-dependent notation
+			{
+				numAddedMods++;
+				if (addToModList)
+				{
+					std::string filename = astringf("%s/%s", subdir, i); // platform-independent notation
+					addLoadedMod(i, std::move(filename), tmpFullModRealPath);
+					char buf[256];
+					snprintf(buf, sizeof(buf), "mod: %s", i);
+					addDumpInfo(buf);
+				}
+			}
+			else
+			{
+				// failed to mount mod
+				code_part log_level = LOG_WZ;
+				auto errorCode = PHYSFS_getLastErrorCode();
+				switch (errorCode)
+				{
+				case PHYSFS_ERR_CORRUPT:
+					log_level = LOG_ERROR;
+					break;
+				case PHYSFS_ERR_NOT_FOUND:
+				default:
+					log_level = LOG_WZ;
+					break;
+				}
+				const char* pErrStr = PHYSFS_getErrorByCode(errorCode);
+				if (!pErrStr)
+				{
+					pErrStr = "<unknown error>";
+				}
+				debug(log_level, "Failed to load mod from path: %s, %s", tmpFullModRealPath.c_str(), pErrStr);
+
+			}
 		}
 		return true; // continue
 	});
@@ -182,18 +218,42 @@ void clearOverrideMods()
 	use_override_mods = false;
 }
 
-static void addLoadedMod(std::string modname, std::string filename)
+bool hasOverrideMods()
+{
+	return !override_mods.empty();
+}
+
+void clearCampaignMods()
+{
+	campaign_mods.clear();
+}
+
+bool hasCampaignMods()
+{
+	return !campaign_mods.empty();
+}
+
+static void addLoadedMod(std::string modname, std::string filename, const std::string& fullRealPath)
 {
 	// Note, findHashOfFile won't work right now, since the search paths aren't set up until after all calls to addSubdirs, see rebuildSearchPath in init.cpp.
-	loaded_mods.emplace_back(std::move(modname), std::move(filename));
+	loaded_mods.emplace_back(std::move(modname), std::move(filename), fullRealPath);
 	mod_list.clear();
+	mod_names_list.clear();
 	mod_hash_list.clear();
+}
+
+static bool hasLoadedModRealPath(const std::string& fullRealPath)
+{
+	return std::any_of(loaded_mods.begin(), loaded_mods.end(), [fullRealPath](const WzMods::LoadedMod& loadedMod) -> bool {
+		return loadedMod.fullRealPath == fullRealPath;
+	});
 }
 
 void clearLoadedMods()
 {
 	loaded_mods.clear();
 	mod_list.clear();
+	mod_names_list.clear();
 	mod_hash_list.clear();
 }
 
@@ -220,9 +280,24 @@ std::string const &getModList()
 	return mod_list;
 }
 
-WzMods::LoadedMod::LoadedMod(const std::string& name, const std::string& filename)
+std::vector<std::string> const &getModNamesList()
+{
+	if (mod_names_list.empty())
+	{
+		for (auto const &mod : loaded_mods)
+		{
+			mod_names_list.push_back(mod.name);
+		}
+		std::sort(mod_names_list.begin(), mod_names_list.end());
+		mod_names_list.erase(std::unique(mod_names_list.begin(), mod_names_list.end()), mod_names_list.end());
+	}
+	return mod_names_list;
+}
+
+WzMods::LoadedMod::LoadedMod(const std::string& name, const std::string& filename, const std::string& fullRealPath)
 : name(name)
 , filename(filename)
+, fullRealPath(fullRealPath)
 { }
 
 Sha256& WzMods::LoadedMod::getHash()

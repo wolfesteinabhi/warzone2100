@@ -1,8 +1,7 @@
-
 include("script/campaign/libcampaign.js");
 include("script/campaign/templates.js");
 
-const NEW_PARADIGM_RES = [
+const mis_newParadigmRes = [
 	"R-Wpn-MG1Mk1", "R-Vehicle-Body01", "R-Sys-Spade1Mk1", "R-Vehicle-Prop-Wheels",
 	"R-Sys-Engineering01", "R-Wpn-MG-Damage04", "R-Wpn-MG-ROF02", "R-Wpn-Cannon-Damage03",
 	"R-Wpn-Flamer-Damage03", "R-Wpn-Flamer-Range01", "R-Wpn-Flamer-ROF01",
@@ -12,19 +11,33 @@ const NEW_PARADIGM_RES = [
 	"R-Wpn-RocketSlow-Damage03", "R-Wpn-Mortar-ROF01", "R-Cyborg-Metals03",
 	"R-Wpn-Mortar-Acc01", "R-Wpn-RocketSlow-Accuracy01", "R-Wpn-Cannon-Accuracy01",
 ];
-const SCAVENGER_RES = [
+const mis_scavengerRes = [
 	"R-Wpn-Flamer-Damage03", "R-Wpn-Flamer-Range01", "R-Wpn-Flamer-ROF01",
 	"R-Wpn-MG-Damage04", "R-Wpn-MG-ROF01", "R-Wpn-Rocket-Damage03",
 	"R-Wpn-Cannon-Damage03", "R-Wpn-Mortar-Damage03", "R-Wpn-Mortar-ROF01",
-	"R-Wpn-Rocket-Accuracy02", "R-Wpn-Rocket-ROF03", "R-Vehicle-Metals02",
+	"R-Wpn-Rocket-Accuracy02", "R-Wpn-Rocket-ROF03", "R-Vehicle-Metals03",
 	"R-Defense-WallUpgrade03", "R-Struc-Materials03", "R-Wpn-Cannon-Accuracy01",
 	"R-Wpn-Mortar-Acc01",
 ];
+const mis_newParadigmResClassic = [
+	"R-Defense-WallUpgrade03", "R-Struc-Materials03", "R-Struc-Factory-Upgrade03",
+	"R-Vehicle-Engine03", "R-Vehicle-Metals03", "R-Cyborg-Metals03",
+	"R-Wpn-Cannon-Accuracy01", "R-Wpn-Cannon-Damage03", "R-Wpn-Flamer-Damage03",
+	"R-Wpn-Flamer-ROF01", "R-Wpn-MG-Damage04", "R-Wpn-MG-ROF01",
+	"R-Wpn-Mortar-Acc01", "R-Wpn-Mortar-Damage03", "R-Wpn-Rocket-Accuracy01",
+	"R-Wpn-Rocket-Damage03", "R-Wpn-Rocket-ROF03", "R-Wpn-RocketSlow-Accuracy02",
+	"R-Wpn-RocketSlow-Damage03", "R-Struc-RprFac-Upgrade03"
+];
+const mis_scavengerResClassic = [
+	"R-Wpn-MG-Damage03", "R-Wpn-Rocket-Damage02"
+];
+const MIS_NEW_ARTI_LABEL = "newArtiLabel"; //Label for the picked-up artifact once dropped.
 var artiGroup; //Droids that take the artifact
 var enemyHasArtifact; //Do they have the artifact
 var enemyStoleArtifact; //Reached the LZ with the artifact
 var droidWithArtiID; //The droid ID that was closest to the artifact to take it
 var artiMovePos; //where artiGroup members are moving to
+var artiResearch; //Research object for the map placed and unit dropped artifact.
 
 //These enable scav factories when close enough
 camAreaEvent("northScavFactoryTrigger", function(droid)
@@ -54,18 +67,28 @@ camAreaEvent("NPTransportTrigger", function(droid)
 {
 	if (enemyHasArtifact && droid.group === artiGroup)
 	{
-		var list = [cTempl.npmrl, cTempl.npmrl];
-		camSendReinforcement(NEW_PARADIGM, camMakePos("NPTransportPos"), list, CAM_REINFORCE_TRANSPORT, {
+		const list = [cTempl.npmrl, cTempl.npmrl];
+		camSendReinforcement(CAM_NEW_PARADIGM, camMakePos("NPTransportPos"), list, CAM_REINFORCE_TRANSPORT, {
 			entry: { x: 39, y: 2 },
 			exit: { x: 32, y: 60 }
 		});
-		playSound("pcv632.ogg"); //enemy transport escaping warning sound
+		playSound(cam_sounds.enemyEscaping);
 	}
 	else
 	{
-		resetLabel("NPTransportTrigger", NEW_PARADIGM);
+		resetLabel("NPTransportTrigger", CAM_NEW_PARADIGM);
 	}
 });
+
+function insaneReinforcementSpawn()
+{
+	const list = [cTempl.npcybr, cTempl.npmrlsh, cTempl.npcybc, cTempl.nphmgt, cTempl.npmorb];
+	const limits = {minimum: 10, maxRandom: 2};
+	const extraUnits = [cTempl.nphct, cTempl.npmrlsh, cTempl.npmsens];
+	const units = {units: list, appended: extraUnits};
+	const location = ["insaneWestSpawnPos", "insaneEastSpawnPos", "insaneValleySpawnPos"];
+	camSendGenericSpawn(CAM_REINFORCE_GROUND, CAM_NEW_PARADIGM, CAM_REINFORCE_CONDITION_UNITS, location, units, limits.minimum, limits.maxRandom);
+}
 
 //Only called once when the New Paradigm takes the artifact for the first time.
 function artifactVideoSetup()
@@ -78,10 +101,10 @@ function artifactVideoSetup()
 //by the time it lands.
 function eventTransporterLanded(transport)
 {
-	if (transport.player === NEW_PARADIGM && enemyHasArtifact)
+	if (transport.player === CAM_NEW_PARADIGM && enemyHasArtifact)
 	{
 		enemyStoleArtifact = true;
-		var crew = enumRange(transport.x, transport.y, 6, NEW_PARADIGM, false).filter((obj) => (
+		const crew = enumRange(transport.x, transport.y, 6, CAM_NEW_PARADIGM, false).filter((obj) => (
 			obj.type === DROID && obj.group === artiGroup
 		));
 		for (let i = 0, l = crew.length; i < l; ++i)
@@ -98,12 +121,12 @@ function eventGroupLoss(obj, group, newsize)
 	{
 		if (obj.id === droidWithArtiID)
 		{
-			var acrate = addFeature("Crate", obj.x, obj.y);
-			addLabel(acrate, "newArtiLabel");
+			camDeleteArtifact("artifact1", false); //Clear original map-placed artifact if found.
+			//Setup the new artifact.
+			const acrate = addFeature(CAM_ARTIFACT_STAT, obj.x, obj.y);
+			addLabel(acrate, MIS_NEW_ARTI_LABEL);
 
-			camSetArtifacts({
-				"newArtiLabel": { tech: ["R-Wpn-Cannon3Mk1", "R-Wpn-RocketSlow-Damage03", "R-Wpn-Rocket-Damage03"] }
-			});
+			camAddArtifact(MIS_NEW_ARTI_LABEL, artiResearch);
 
 			droidWithArtiID = undefined;
 			enemyHasArtifact = false;
@@ -114,7 +137,7 @@ function eventGroupLoss(obj, group, newsize)
 
 function enemyCanTakeArtifact(label)
 {
-	return label.indexOf("newArtiLabel") !== -1 || label.indexOf("artifactLocation") !== -1;
+	return label.indexOf(MIS_NEW_ARTI_LABEL) !== -1 || label.indexOf("artifact1") !== -1;
 }
 
 //Moves some New Paradigm forces to the artifact
@@ -127,15 +150,15 @@ function getArtifact()
 	}
 
 	const GRAB_RADIUS = 2;
-	var artifact = camGetArtifacts().filter((label) => (
+	const artifact = camGetArtifacts().filter((label) => (
 		enemyCanTakeArtifact(label) && getObject(label) !== null
 	));
-	var artiLoc = artiMovePos;
+	let artiLoc = artiMovePos;
 
 	if (!enemyHasArtifact && !enemyStoleArtifact && artifact.length > 0)
 	{
 		//Go to the artifact instead.
-		var realCrate = artifact[0];
+		const realCrate = artifact[0];
 		artiLoc = camMakePos(realCrate);
 		if (!camDef(artiLoc))
 		{
@@ -143,17 +166,17 @@ function getArtifact()
 		}
 
 		//Find the one closest to the artifact so that one can "hold" it
-		var artiMembers = enumGroup(artiGroup);
-		var idx = 0;
-		var dist = Infinity;
+		const artiMembers = enumGroup(artiGroup);
+		let idx = 0;
+		let dist = Infinity;
 
 		for (let i = 0, l = artiMembers.length; i < l; ++i)
 		{
-			var drDist = camDist(artiMembers[i], artiLoc);
-			if (drDist < dist)
+			const DR_DIST = camDist(artiMembers[i], artiLoc);
+			if (DR_DIST < dist)
 			{
 				idx = i;
-				dist = drDist;
+				dist = DR_DIST;
 			}
 		}
 
@@ -183,15 +206,15 @@ function buildLancers()
 {
 	for (let i = 1; i <= 6; ++i)
 	{
-		camQueueBuilding(NEW_PARADIGM, "WallTower06", "hardPoint" + i);
+		camQueueBuilding(CAM_NEW_PARADIGM, "WallTower06", "hardPoint" + i);
 	}
 }
 
 //Must destroy all of the New Paradigm droids and make sure the artifact is safe.
 function extraVictory()
 {
-	var npTransportFound = false;
-	enumDroid(NEW_PARADIGM).forEach((dr) => {
+	let npTransportFound = false;
+	enumDroid(CAM_NEW_PARADIGM).forEach((dr) => {
 		if (camIsTransporter(dr))
 		{
 			npTransportFound = true;
@@ -204,7 +227,7 @@ function extraVictory()
 		return false;
 	}
 
-	if (!enumDroid(NEW_PARADIGM).length)
+	if (!enumDroid(CAM_NEW_PARADIGM).length)
 	{
 		return true;
 	}
@@ -244,16 +267,16 @@ function eventStartLevel()
 	enemyHasArtifact = false;
 	enemyStoleArtifact = false;
 	artiMovePos = "NPWayPoint";
-	var startpos = getObject("startPosition");
-	var lz = getObject("landingZone"); //player lz
-	var tent = getObject("transporterEntry");
-	var text = getObject("transporterExit");
-	centreView(startpos.x, startpos.y);
+	const startPos = getObject("startPosition");
+	const lz = getObject("landingZone"); //player lz
+	const tEnt = getObject("transporterEntry");
+	const tExt = getObject("transporterExit");
+	centreView(startPos.x, startPos.y);
 	setNoGoArea(lz.x, lz.y, lz.x2, lz.y2, CAM_HUMAN_PLAYER);
-	startTransporterEntry(tent.x, tent.y, CAM_HUMAN_PLAYER);
-	setTransporterExit(text.x, text.y, CAM_HUMAN_PLAYER);
+	startTransporterEntry(tEnt.x, tEnt.y, CAM_HUMAN_PLAYER);
+	setTransporterExit(tExt.x, tExt.y, CAM_HUMAN_PLAYER);
 
-	camSetStandardWinLossConditions(CAM_VICTORY_OFFWORLD, "SUB_1_DS", {
+	camSetStandardWinLossConditions(CAM_VICTORY_OFFWORLD, cam_levels.alpha12.pre, {
 		area: "RTLZ",
 		message: "C1-7_LZ",
 		reinforcements: camMinutesToSeconds(1),
@@ -262,46 +285,59 @@ function eventStartLevel()
 	});
 
 	//Make sure the New Paradigm and Scavs are allies
-	setAlliance(NEW_PARADIGM, SCAV_7, true);
+	setAlliance(CAM_NEW_PARADIGM, CAM_SCAV_7, true);
 
-	//Get rid of the already existing crate and replace with another
-	camSafeRemoveObject("artifact1", false);
+	if (camClassicMode())
+	{
+		camClassicResearch(mis_newParadigmResClassic, CAM_NEW_PARADIGM);
+		camClassicResearch(mis_scavengerResClassic, CAM_SCAV_7);
+
+		artiResearch = "R-Wpn-Cannon3Mk1";
+	}
+	else
+	{
+		camCompleteRequiredResearch(mis_newParadigmRes, CAM_NEW_PARADIGM);
+		camCompleteRequiredResearch(mis_scavengerRes, CAM_SCAV_7);
+
+		camUpgradeOnMapTemplates(cTempl.bloke, cTempl.blokeheavy, CAM_SCAV_7);
+		camUpgradeOnMapTemplates(cTempl.trike, cTempl.trikeheavy, CAM_SCAV_7);
+		camUpgradeOnMapTemplates(cTempl.buggy, cTempl.buggyheavy, CAM_SCAV_7);
+		camUpgradeOnMapTemplates(cTempl.bjeep, cTempl.bjeepheavy, CAM_SCAV_7);
+		camUpgradeOnMapTemplates(cTempl.rbjeep, cTempl.rbjeep8, CAM_SCAV_7);
+
+		// New MRA Mantis Tracks units on the hill
+		if (difficulty >= HARD)
+		{
+			addDroid(CAM_NEW_PARADIGM, 29, 16, "MRA Mantis Tracks", tBody.tank.mantis, tProp.tank.tracks, "", "", tWeap.tank.miniRocketArray);
+			addDroid(CAM_NEW_PARADIGM, 29, 17, "MRA Mantis Tracks", tBody.tank.mantis, tProp.tank.tracks, "", "", tWeap.tank.miniRocketArray);
+			addDroid(CAM_NEW_PARADIGM, 29, 18, "MRA Mantis Tracks", tBody.tank.mantis, tProp.tank.tracks, "", "", tWeap.tank.miniRocketArray);
+		}
+
+		artiResearch = ["R-Wpn-Cannon3Mk1", "R-Wpn-RocketSlow-Damage03", "R-Wpn-Rocket-Damage03"];
+	}
+
 	camSetArtifacts({
-		"artifactLocation": { tech: ["R-Wpn-Cannon3Mk1", "R-Wpn-RocketSlow-Damage03"] },
+		"artifact1": { tech: artiResearch },
 	});
-
-	camCompleteRequiredResearch(NEW_PARADIGM_RES, NEW_PARADIGM);
-	camCompleteRequiredResearch(SCAVENGER_RES, SCAV_7);
-
-	camUpgradeOnMapTemplates(cTempl.bloke, cTempl.blokeheavy, SCAV_7);
-	camUpgradeOnMapTemplates(cTempl.trike, cTempl.trikeheavy, SCAV_7);
-	camUpgradeOnMapTemplates(cTempl.buggy, cTempl.buggyheavy, SCAV_7);
-	camUpgradeOnMapTemplates(cTempl.bjeep, cTempl.bjeepheavy, SCAV_7);
-	camUpgradeOnMapTemplates(cTempl.rbjeep, cTempl.rbjeep8, SCAV_7);
-
-	// New MRA Mantis Tracks units on the hill
-	addDroid(NEW_PARADIGM, 29, 16, "MRA Mantis Tracks", "Body12SUP", "tracked01", "", "", "Rocket-MRL");
-	addDroid(NEW_PARADIGM, 29, 17, "MRA Mantis Tracks", "Body12SUP", "tracked01", "", "", "Rocket-MRL");
-	addDroid(NEW_PARADIGM, 29, 18, "MRA Mantis Tracks", "Body12SUP", "tracked01", "", "", "Rocket-MRL");
 
 	camSetEnemyBases({
 		"ScavMiddleGroup": {
 			cleanup: "scavMiddle",
 			detectMsg: "C1-7_BASE1",
-			detectSnd: "pcv374.ogg",
-			eliminateSnd: "pcv392.ogg"
+			detectSnd: cam_sounds.baseDetection.scavengerBaseDetected,
+			eliminateSnd: cam_sounds.baseElimination.scavengerBaseEradicated
 		},
 		"ScavSouthEastGroup": {
 			cleanup: "scavSouthEast",
 			detectMsg: "C1-7_BASE2",
-			detectSnd: "pcv374.ogg",
-			eliminateSnd: "pcv392.ogg"
+			detectSnd: cam_sounds.baseDetection.scavengerBaseDetected,
+			eliminateSnd: cam_sounds.baseElimination.scavengerBaseEradicated
 		},
 		"ScavNorthEastGroup": {
 			cleanup: "scavNorth",
 			detectMsg: "C1-7_BASE3",
-			detectSnd: "pcv374.ogg",
-			eliminateSnd: "pcv392.ogg"
+			detectSnd: cam_sounds.baseDetection.scavengerBaseDetected,
+			eliminateSnd: cam_sounds.baseElimination.scavengerBaseEradicated
 		},
 	});
 
@@ -315,7 +351,7 @@ function eventStartLevel()
 				regroup: true,
 				count: -1,
 			},
-			templates: [ cTempl.firecan, cTempl.rbjeep8, cTempl.rbuggy, cTempl.blokeheavy ]
+			templates: (!camClassicMode()) ? [ cTempl.firecan, cTempl.rbjeep8, cTempl.rbuggy, cTempl.blokeheavy ] : [ cTempl.firecan, cTempl.rbjeep, cTempl.rbuggy, cTempl.bloke ]
 		},
 		"scavSouthEastFactory": {
 			assembly: "southAssembly",
@@ -326,7 +362,7 @@ function eventStartLevel()
 				regroup: true,
 				count: -1,
 			},
-			templates: [ cTempl.firecan, cTempl.rbjeep8, cTempl.rbuggy, cTempl.blokeheavy ]
+			templates: (!camClassicMode()) ? [ cTempl.firecan, cTempl.rbjeep8, cTempl.rbuggy, cTempl.blokeheavy ] : [ cTempl.firecan, cTempl.rbjeep, cTempl.rbuggy, cTempl.bloke ]
 		},
 		"scavNorthEastFactory": {
 			assembly: "northAssembly",
@@ -337,15 +373,19 @@ function eventStartLevel()
 				regroup: true,
 				count: -1,
 			},
-			templates: [ cTempl.firecan, cTempl.rbjeep8, cTempl.rbuggy, cTempl.blokeheavy ]
+			templates: (!camClassicMode()) ? [ cTempl.firecan, cTempl.rbjeep8, cTempl.rbuggy, cTempl.blokeheavy ] : [ cTempl.firecan, cTempl.rbjeep, cTempl.rbuggy, cTempl.bloke ]
 		},
 	});
 
-	artiGroup = camMakeGroup(enumArea("NPArtiGroup", NEW_PARADIGM, false));
+	artiGroup = camMakeGroup(enumArea("NPArtiGroup", CAM_NEW_PARADIGM, false));
 	droidWithArtiID = 0;
-	camManageTrucks(NEW_PARADIGM);
+	camManageTrucks(CAM_NEW_PARADIGM);
 	buildLancers();
 
 	hackAddMessage("C1-7_OBJ1", PROX_MSG, CAM_HUMAN_PLAYER, false); //Canyon
 	queue("startArtifactCollection", camChangeOnDiff(camMinutesToMilliseconds(1.5)));
+	if (camAllowInsaneSpawns())
+	{
+		setTimer("insaneReinforcementSpawn", camMinutesToMilliseconds(2.5));
+	}
 }

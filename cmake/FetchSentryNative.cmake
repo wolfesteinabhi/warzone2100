@@ -63,8 +63,12 @@ FetchContent_Declare(
 	sentrynative
 	${_sentrynative_fetch_download_options}
 	SOURCE_DIR "${_sentrynative_source_dir}"
+	PATCH_COMMAND ${CMAKE_COMMAND} "-DSOURCE_DIR=<SOURCE_DIR>" -P "${CMAKE_SOURCE_DIR}/lib/exceptionhandler/3rdparty/sentry/PatchSentryNative.cmake"
+	EXCLUDE_FROM_ALL # Requires CMake 3.28+
+	# Intentionally prevent FetchContent_MakeAvailable from adding the subdirectory automatically
+	# Reference: https://discourse.cmake.org/t/prevent-fetchcontent-makeavailable-to-execute-cmakelists-txt/12704/3
+	SOURCE_SUBDIR dummy_noexist
 )
-FetchContent_GetProperties(sentrynative)
 set(SENTRY_BUILD_SHARED_LIBS OFF CACHE BOOL "Sentry build shared libs" FORCE)
 set(SENTRY_EXPORT_SYMBOLS OFF CACHE BOOL "Export symbols" FORCE)
 set(SENTRY_BUILD_RUNTIMESTATIC OFF CACHE BOOL "Build sentry-native with static runtime" FORCE)
@@ -75,16 +79,67 @@ if(CMAKE_CXX_STANDARD)
 	set(_old_CMAKE_CXX_STANDARD "${CMAKE_CXX_STANDARD}")
 	unset(CMAKE_CXX_STANDARD) # Allow sentry-native to set its desired default
 endif()
-if(CMAKE_SYSTEM_NAME MATCHES "Darwin|Linux" AND NOT DEFINED SENTRY_BACKEND)
+if(CMAKE_CXX_EXTENSIONS)
+	set(_old_CMAKE_CXX_EXTENSIONS "${CMAKE_CXX_EXTENSIONS}")
+	unset(CMAKE_CXX_EXTENSIONS) # Allow sentry-native to set its desired default
+endif()
+if(CMAKE_SYSTEM_NAME MATCHES "Darwin" AND NOT DEFINED SENTRY_BACKEND)
 	set(SENTRY_BACKEND "breakpad" CACHE STRING
 	"The sentry backend responsible for reporting crashes, can be either 'none', 'inproc', 'breakpad' or 'crashpad'." FORCE)
 endif()
-if(NOT sentrynative_POPULATED)
-	FetchContent_Populate(sentrynative)
-	add_subdirectory("${sentrynative_SOURCE_DIR}" "${sentrynative_BINARY_DIR}" EXCLUDE_FROM_ALL)
+FetchContent_MakeAvailable(sentrynative)
+add_subdirectory("${sentrynative_SOURCE_DIR}" "${sentrynative_BINARY_DIR}" EXCLUDE_FROM_ALL) # Because FetchContent_Declare EXCLUDE_FROM_ALL requires CMake 3.28+
+message(STATUS "Enabling crash-handling backend: sentry-native ($CACHE{SENTRY_BACKEND}) for (${CMAKE_SYSTEM_NAME}:${CMAKE_SYSTEM_PROCESSOR})")
+
+####################
+# Silencing warnings
+
+if(NOT MSVC)
+
+	include(CheckCompilerFlagsOutput)
+
+	set(_supported_sentry_c_compiler_flags "")
+	set(_supported_sentry_cxx_compiler_flags "")
+
+	# -Wshadow					(GCC 3.4+, Clang 3.2+)
+	check_compiler_flags_output("-Werror -Wno-shadow -Wno-error=cpp" COMPILER_TYPE C   OUTPUT_FLAGS "-Wno-shadow" OUTPUT_VARIABLE _supported_sentry_c_compiler_flags APPEND)
+	check_compiler_flags_output("-Werror -Wno-shadow -Wno-error=cpp" COMPILER_TYPE CXX   OUTPUT_FLAGS "-Wno-shadow" OUTPUT_VARIABLE _supported_sentry_cxx_compiler_flags APPEND)
+
+	# -Wunused-but-set-variable
+	check_compiler_flags_output("-Werror -Wno-unused-but-set-variable -Wno-error=cpp" COMPILER_TYPE C   OUTPUT_FLAGS "-Wno-unused-but-set-variable" OUTPUT_VARIABLE _supported_sentry_c_compiler_flags APPEND)
+	check_compiler_flags_output("-Werror -Wno-unused-but-set-variable -Wno-error=cpp" COMPILER_TYPE CXX   OUTPUT_FLAGS "-Wno-unused-but-set-variable" OUTPUT_VARIABLE _supported_sentry_cxx_compiler_flags APPEND)
+
+	# -Wconditional-uninitialized
+	check_compiler_flags_output("-Werror -Wno-conditional-uninitialized -Wno-error=cpp" COMPILER_TYPE C   OUTPUT_FLAGS "-Wno-conditional-uninitialized" OUTPUT_VARIABLE _supported_sentry_c_compiler_flags APPEND)
+	check_compiler_flags_output("-Werror -Wno-conditional-uninitialized -Wno-error=cpp" COMPILER_TYPE CXX   OUTPUT_FLAGS "-Wno-conditional-uninitialized" OUTPUT_VARIABLE _supported_sentry_cxx_compiler_flags APPEND)
+
+	# -Wassign-enum
+	check_compiler_flags_output("-Werror -Wno-assign-enum -Wno-error=cpp" COMPILER_TYPE C   OUTPUT_FLAGS "-Wno-assign-enum" OUTPUT_VARIABLE _supported_sentry_c_compiler_flags APPEND)
+	check_compiler_flags_output("-Werror -Wno-assign-enum -Wno-error=cpp" COMPILER_TYPE CXX   OUTPUT_FLAGS "-Wno-assign-enum" OUTPUT_VARIABLE _supported_sentry_cxx_compiler_flags APPEND)
+
+	# -Wunknown-pragmas (caused by breakpad header)
+	check_compiler_flags_output("-Werror -Wno-unknown-pragmas -Wno-error=cpp" COMPILER_TYPE C   OUTPUT_FLAGS "-Wno-unknown-pragmas" OUTPUT_VARIABLE _supported_sentry_c_compiler_flags APPEND)
+	check_compiler_flags_output("-Werror -Wno-unknown-pragmas -Wno-error=cpp" COMPILER_TYPE CXX   OUTPUT_FLAGS "-Wno-unknown-pragmas" OUTPUT_VARIABLE _supported_sentry_cxx_compiler_flags APPEND)
+
+	if (NOT _supported_sentry_c_compiler_flags STREQUAL "")
+		string(REPLACE " " ";" _supported_sentry_c_compiler_flags "${_supported_sentry_c_compiler_flags}")
+	endif()
+	if (NOT _supported_sentry_cxx_compiler_flags STREQUAL "")
+		string(REPLACE " " ";" _supported_sentry_cxx_compiler_flags "${_supported_sentry_cxx_compiler_flags}")
+	endif()
+
+	if(TARGET sentry)
+		target_compile_options(sentry PRIVATE "$<$<COMPILE_LANGUAGE:C>:${_supported_sentry_c_compiler_flags}>")
+		target_compile_options(sentry PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${_supported_sentry_cxx_compiler_flags}>")
+	endif()
+
 endif()
-message(STATUS "Enabling crash-handling backend: sentry-native ($CACHE{SENTRY_BACKEND})")
+
+####################
 
 if(_old_CMAKE_CXX_STANDARD)
 	set(CMAKE_CXX_STANDARD "${_old_CMAKE_CXX_STANDARD}")
+endif()
+if(_old_CMAKE_CXX_EXTENSIONS)
+	set(CMAKE_CXX_EXTENSIONS "${_old_CMAKE_CXX_EXTENSIONS}")
 endif()

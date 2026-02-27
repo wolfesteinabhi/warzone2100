@@ -1,3 +1,22 @@
+/*
+	This file is part of Warzone 2100.
+	Copyright (C) 2021-2023  Warzone 2100 Project
+
+	Warzone 2100 is free software; you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation; either version 2 of the License, or
+	(at your option) any later version.
+
+	Warzone 2100 is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with Warzone 2100; if not, write to the Free Software
+	Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
+*/
+
 #include "lib/widget/button.h"
 #include "lib/widget/label.h"
 #include "lib/widget/bar.h"
@@ -14,7 +33,7 @@ static const uint8_t commandBrainComponent = 1; // hmm there is only 1 "CommandB
 
 FACTORY *getFactoryOrNullptr(STRUCTURE *factory)
 {
-	ASSERT_OR_RETURN(nullptr, StructIsFactory(factory), "Invalid factory pointer");
+	ASSERT_OR_RETURN(nullptr, factory && factory->isFactory(), "Invalid factory pointer");
 	return (FACTORY *)factory->pFunctionality;
 }
 
@@ -119,11 +138,15 @@ void ManufactureController::updateFactoriesList()
 {
 	factories.clear();
 
-	for (auto structure = interfaceStructList(); structure != nullptr; structure = structure->psNext)
+	auto* intStrList = interfaceStructList();
+	if (intStrList)
 	{
-		if (structure->status == SS_BUILT && structure->died == 0 && StructIsFactory(structure))
+		for (auto structure : *intStrList)
 		{
-			factories.push_back(structure);
+			if (structure->status == SS_BUILT && structure->died == 0 && structure->isFactory())
+			{
+				factories.push_back(structure);
+			}
 		}
 	}
 
@@ -161,11 +184,11 @@ void ManufactureController::refresh()
 void ManufactureController::clearData()
 {
 	factories.clear();
-	setHighlightedObject(nullptr);
+	setHighlightedObject(nullptr, false);
 	stats.clear();
 }
 
-void ManufactureController::setHighlightedObject(BASE_OBJECT *object)
+void ManufactureController::setHighlightedObject(BASE_OBJECT *object, bool jumpToHighlightedStatsObject)
 {
 	if (object == nullptr)
 	{
@@ -174,7 +197,8 @@ void ManufactureController::setHighlightedObject(BASE_OBJECT *object)
 	}
 
 	auto factory = castStructure(object);
-	ASSERT_OR_RETURN(, StructIsFactory(factory), "Invalid factory pointer");
+	ASSERT_OR_RETURN(, factory && factory->isFactory(), "Invalid factory pointer");
+	queuedJumpToHighlightedStatsObject = queuedJumpToHighlightedStatsObject || jumpToHighlightedStatsObject;
 	highlightedFactory = factory;
 }
 
@@ -208,7 +232,7 @@ public:
 	void clickPrimary() override
 	{
 		controller->clearStructureSelection();
-		controller->selectObject(controller->getObjectAt(objectIndex));
+		controller->selectObject(controller->getObjectAt(objectIndex), false);
 		jump();
 		BaseStatsController::scheduleDisplayStatsForm(controller);
 	}
@@ -217,7 +241,10 @@ protected:
 	void initialize()
 	{
 		attach(factoryNumberLabel = std::make_shared<W_LABEL>());
+		attach(factoryAssignGroupLabel = std::make_shared<W_LABEL>());
 		factoryNumberLabel->setGeometry(OBJ_TEXTX, OBJ_B1TEXTY, 16, 16);
+		factoryAssignGroupLabel->setGeometry(OBJ_TEXTX + 48, OBJ_B1TEXTY, 16, 16);
+		factoryAssignGroupLabel->setFontColour(pal_RGBA(255, 220, 115, 255) /* gold */);
 	}
 
 	void display(int xOffset, int yOffset) override
@@ -239,21 +266,32 @@ protected:
 	void updateLayout() override
 	{
 		BaseWidget::updateLayout();
-		auto factory = getFactoryOrNullptr(controller->getObjectAt(objectIndex));
+		auto psStruct = controller->getObjectAt(objectIndex);
+		auto factory = getFactoryOrNullptr(psStruct);
 		ASSERT_NOT_NULLPTR_OR_RETURN(, factory);
 		if (factory->psAssemblyPoint == nullptr)
 		{
 			factoryNumberLabel->setString("");
-			return;
 		}
-		factoryNumberLabel->setString(WzString::fromUtf8(astringf("%u", factory->psAssemblyPoint->factoryInc + 1)));
+		else
+		{
+			factoryNumberLabel->setString(WzString::format("%u", factory->psAssemblyPoint->factoryInc + 1));
+		}
+		if (psStruct->productToGroup != UBYTE_MAX)
+		{
+			factoryAssignGroupLabel->setString(WzString::format("%u", static_cast<unsigned>(psStruct->productToGroup)));
+		}
+		else
+		{
+			factoryAssignGroupLabel->setString("");
+		}
 	}
 
 	std::string getTip() override
 	{
 		auto factory = controller->getObjectAt(objectIndex);
 		ASSERT_NOT_NULLPTR_OR_RETURN("", factory);
-		return getStatsName(factory->pStructureType);
+		return getLocalizedStatsName(factory->pStructureType);
 	}
 
 	ManufactureController &getController() const override
@@ -264,6 +302,7 @@ protected:
 private:
 	std::shared_ptr<ManufactureController> controller;
 	std::shared_ptr<W_LABEL> factoryNumberLabel;
+	std::shared_ptr<W_LABEL> factoryAssignGroupLabel;
 };
 
 class ManufactureStatsButton: public StatsButton
@@ -345,7 +384,7 @@ protected:
 		if (expgfx != UDWORD_MAX)
 		{
 			// FIXME: use offsets relative to template positon, not hardcoded values ?
-			iV_DrawImage(IntImages, (UWORD)expgfx, xOffset + 45, yOffset + 4);	
+			iV_DrawImage(IntImages, (UWORD)expgfx, xOffset + 45, yOffset + 4);
 		}
 	}
 
@@ -380,7 +419,7 @@ private:
 		auto productionRemaining = getProduction(factory, droidTemplate).numRemaining();
 		if (productionRemaining > 0 && factory && StructureIsManufacturingPending(factory))
 		{
-			productionRunSizeLabel->setString(WzString::fromUtf8(astringf("%d", productionRemaining)));
+			productionRunSizeLabel->setString(WzString::format("%d", productionRemaining));
 			productionRunSizeLabel->show();
 		}
 		else
@@ -432,17 +471,17 @@ private:
 		ASSERT_NOT_NULLPTR_OR_RETURN(, factory);
 		controller->releaseFactoryProduction(factory);
 		controller->clearStructureSelection();
-		controller->selectObject(factory);
+		controller->selectObject(factory, true);
 		BaseStatsController::scheduleDisplayStatsForm(controller);
 	}
 
-	void clickSecondary() override
+	void clickSecondary(bool synthesizedFromHold) override
 	{
 		auto factory = controller->getObjectAt(objectIndex);
 		ASSERT_NOT_NULLPTR_OR_RETURN(, factory);
 		controller->clearStructureSelection();
 		controller->cancelFactoryProduction(factory);
-		controller->setHighlightedObject(factory);
+		controller->setHighlightedObject(factory, true);
 		controller->refresh();
 		BaseStatsController::scheduleDisplayStatsForm(controller);
 	}
@@ -540,7 +579,7 @@ private:
 		adjustFactoryProduction(true);
 	}
 
-	void clickSecondary() override
+	void clickSecondary(bool synthesizedFromHold) override
 	{
 		adjustFactoryProduction(false);
 	}

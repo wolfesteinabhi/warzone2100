@@ -58,7 +58,7 @@ W_BUTTON::W_BUTTON()
 	, FontID(font_regular)
 {}
 
-unsigned W_BUTTON::getState()
+unsigned W_BUTTON::getState() const
 {
 	return state & (WBUT_DISABLE | WBUT_LOCK | WBUT_CLICKLOCK | WBUT_FLASH | WBUT_DOWN | WBUT_HIGHLIGHT);
 }
@@ -107,6 +107,37 @@ void W_BUTTON::setTip(std::string string)
 	pTip = string;
 }
 
+void W_BUTTON::setHelp(optional<WidgetHelp> _help)
+{
+	help = _help;
+}
+
+void W_BUTTON::run(W_CONTEXT *psContext)
+{
+	if (clickDownStart.has_value())
+	{
+		const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+		if (std::chrono::duration_cast<std::chrono::milliseconds>(now - clickDownStart.value()) >= widgGetClickHoldMS())
+		{
+			if (clickDownKey.has_value())
+			{
+				if (clickHeld(psContext, clickDownKey.value()))
+				{
+					// clear button down state, as the clickHeld event "consumed" this click
+					state &= ~WBUT_DOWN;
+				}
+			}
+			clickDownStart.reset();
+		}
+	}
+}
+
+// Returns true if "consumed" held click
+bool W_BUTTON::clickHeld(W_CONTEXT *psContext, WIDGET_KEY key)
+{
+	return false;
+}
+
 void W_BUTTON::clicked(W_CONTEXT *, WIDGET_KEY key)
 {
 	if ((minClickInterval > 0) && (realTime - lastClickTime < minClickInterval))
@@ -130,6 +161,9 @@ void W_BUTTON::clicked(W_CONTEXT *, WIDGET_KEY key)
 			}
 			state &= ~WBUT_FLASH;	// Stop it flashing
 			state |= WBUT_DOWN;
+
+			clickDownStart = std::chrono::steady_clock::now();
+			clickDownKey = key;
 		}
 	}
 }
@@ -165,6 +199,9 @@ void W_BUTTON::released(W_CONTEXT *, WIDGET_KEY key)
 			dirty = true;
 		}
 	}
+
+	clickDownStart = nullopt;
+	clickDownKey = nullopt;
 }
 
 WIDGET_KEY W_BUTTON::getOnClickButtonPressed() const
@@ -197,6 +234,9 @@ void W_BUTTON::highlightLost()
 {
 	state &= ~(WBUT_DOWN | WBUT_HIGHLIGHT);
 	dirty = true;
+
+	clickDownStart = nullopt;
+	clickDownKey = nullopt;
 }
 
 void W_BUTTON::display(int xOffset, int yOffset)
@@ -628,7 +668,6 @@ void PopoverMenuButtonDisplayFunc(WIDGET *psWidget, UDWORD xOffset, UDWORD yOffs
 
 	// Display the button background
 	PIELIGHT backgroundColor;
-	backgroundColor.rgba = 0;
 	if (isDown)
 	{
 		backgroundColor = pal_RGBA(10, 0, 70, 250); //WZCOL_FORM_DARK;
@@ -637,7 +676,7 @@ void PopoverMenuButtonDisplayFunc(WIDGET *psWidget, UDWORD xOffset, UDWORD yOffs
 	{
 		backgroundColor = pal_RGBA(25, 0, 110, 220); //WZCOL_TEXT_MEDIUM;
 	}
-	if (backgroundColor.rgba != 0)
+	if (!backgroundColor.isTransparent())
 	{
 		// Draw the background
 		pie_UniTransBoxFill(x0, y0, x0 + psButton->width(), y0 + psButton->height(), backgroundColor);

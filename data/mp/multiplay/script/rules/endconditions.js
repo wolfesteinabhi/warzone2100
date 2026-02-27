@@ -53,7 +53,9 @@ class Player
 
 	hasOnlyConstructor()
 	{
-		if (countDroid(DROID_ANY, this.playNum) - countDroid(DROID_CONSTRUCT, this.playNum) === 0)
+		const truckCnt = countDroid(DROID_CONSTRUCT, this.playNum);
+		const unitCnt = countDroid(DROID_ANY, this.playNum);
+		if (truckCnt > 0 && unitCnt - truckCnt === 0)
 		{
 			return true;
 		}
@@ -249,7 +251,7 @@ function checkEndConditions()
 		// (can be spectator-only slots who have not yet received a message,
 		// or previous losers who were converted to spectators who should now receive
 		// a new message that the game has fully ended)
-		if (isSpectator(-1) && !newlyLosingTeams.some((team) => (team.containsPlayer(selectedPlayer))))
+		if (isSpectator(-1))
 		{
 			gameOverMessage(false);
 		}
@@ -398,10 +400,9 @@ function activityAlert()
 		console(
 			_("- unit building - research completion - construction of base structures (factories, power plants, laboratories, modules and oil derricks) - dealing damage")
 		);
-		if (getMissionTime() > idleTime)
+		if (getMissionTime() <= -1)
 		{
-			setMissionTime(
-				(playersTeam[selectedPlayer].lastActivity + idleTime - gameTime) / 1000);
+			setMissionTime((playersTeam[selectedPlayer].lastActivity + idleTime - gameTime) / 1000);
 		}
 	}
 	if (playersTeam[selectedPlayer].lastActivity + idleTime / 2 > gameTime)

@@ -25,6 +25,7 @@
 #include "lib/framework/frame.h"
 #include "lib/framework/frameresource.h"
 #include "lib/framework/strres.h"
+#include "lib/framework/object_list_iteration.h"
 #include "lib/widget/slider.h"
 #include "lib/widget/widget.h"
 #include "hci.h"
@@ -126,13 +127,6 @@ void WzMultiLimitTitleUI::start()
 	if (challengeActive)
 	{
 		resetLimits();
-		// turn off the sliders
-		sliderEnableDrag(false);
-	}
-	else
-	{
-		//enable the sliders
-		sliderEnableDrag(true);
 	}
 
 	// TRANSLATORS: Sidetext of structure limits screen
@@ -179,6 +173,10 @@ void WzMultiLimitTitleUI::start()
 	            iV_GetImageWidth(FrontImages, IMAGE_NO),
 	            iV_GetImageHeight(FrontImages, IMAGE_NO),
 	            _("Apply Defaults and Return To Previous Screen"), IMAGE_NO, IMAGE_NO, true);
+	if (challengeActive)
+	{
+		widgSetButtonState(psWScreen, IDLIMITS_RETURN, WBUT_DISABLE);
+	}
 
 	// ok button
 	addMultiBut(psWScreen, IDLIMITS, IDLIMITS_OK,
@@ -219,9 +217,13 @@ void WzMultiLimitTitleUI::start()
 			limitsList->addWidgetToLayout(button);
 			++limitsButtonId;
 
-			addFESlider(limitsButtonId, limitsButtonId - 1, 290, 11,
+			auto slider = addFESlider(limitsButtonId, limitsButtonId - 1, 290, 11,
 			            asStructureStats[i].maxLimit,
 			            asStructureStats[i].upgrade[0].limit);
+			if (challengeActive)
+			{
+				slider->disable();
+			}
 			++limitsButtonId;
 		}
 	}
@@ -237,10 +239,13 @@ TITLECODE WzMultiLimitTitleUI::run()
 	// sliders
 	if ((id > IDLIMITS_ENTRIES_START)  && (id < IDLIMITS_ENTRIES_END))
 	{
-		unsigned statid = widgGetFromID(psWScreen, id - 1)->UserData;
-		if (statid)
+		if (!challengeActive)
 		{
-			asStructureStats[statid].upgrade[0].limit = (UBYTE)((W_SLIDER *)(widgGetFromID(psWScreen, id)))->pos;
+			unsigned statid = widgGetFromID(psWScreen, id - 1)->UserData;
+			if (statid)
+			{
+				asStructureStats[statid].upgrade[0].limit = (UBYTE)((W_SLIDER *)(widgGetFromID(psWScreen, id)))->pos;
+			}
 		}
 	}
 	else
@@ -257,6 +262,11 @@ TITLECODE WzMultiLimitTitleUI::run()
 			widgSetButtonState(psWScreen, IDLIMITS_FORCEOFF, WBUT_DISABLE);
 			break;
 		case IDLIMITS_RETURN:
+			if (challengeActive)
+			{
+				changeTitleUI(parent);
+				break;
+			}
 			// reset the sliders..
 			resetLimits();
 			// free limiter structure
@@ -287,6 +297,11 @@ TITLECODE WzMultiLimitTitleUI::run()
 
 			break;
 		case IDLIMITS_OK:
+			if (challengeActive)
+			{
+				changeTitleUI(parent);
+				break;
+			}
 			if (!challengeActive && widgGetButtonState(psWScreen, IDLIMITS_FORCE))
 			{
 				ingame.flags |= MPFLAGS_FORCELIMITS;
@@ -380,15 +395,15 @@ bool applyLimitSet()
 				{
 					while (asStructureStats[id].curCount[player] > asStructureStats[id].upgrade[player].limit)
 					{
-						for (STRUCTURE *psStruct = apsStructLists[player]; psStruct; psStruct = psStruct->psNext)
+						mutating_list_iterate(apsStructLists[player], [id](STRUCTURE* psStruct)
 						{
 							if (psStruct->pStructureType->type == asStructureStats[id].type)
 							{
 								removeStruct(psStruct, true);
-								break;
+								return IterationResult::BREAK_ITERATION;
 							}
-						}
-
+							return IterationResult::CONTINUE_ITERATION;
+						});
 					}
 				}
 			}
@@ -503,11 +518,11 @@ static void displayStructureBar(WIDGET *psWidget, UDWORD xOffset, UDWORD yOffset
 	displayStructureStatButton(stat, &rotation, &position, scale);
 
 	// draw name
-	cache.wzNameText.setText(_(getStatsName(stat)), font_regular);
+	cache.wzNameText.setText(getLocalizedStatsName(stat), font_regular);
 	cache.wzNameText.render(x + 80, y + psWidget->height() / 2 + 3, WZCOL_TEXT_BRIGHT);
 
 	// draw limit
-	ssprintf(str, "%d", ((W_SLIDER *)widgGetFromID(psWScreen, psWidget->id + 1))->pos);
+	ssprintf(str, "%u", static_cast<unsigned>(((W_SLIDER *)widgGetFromID(psWScreen, psWidget->id + 1))->pos));
 	cache.wzLimitText.setText(str, font_regular);
 	cache.wzLimitText.render(x + 270, y + psWidget->height() / 2 + 3, WZCOL_TEXT_BRIGHT);
 

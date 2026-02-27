@@ -38,6 +38,9 @@
 #include "../warzoneconfig.h"
 #include "../frend.h"
 #include "lib/widget/checkbox.h"
+#include "gamebrowser.h"
+
+static std::string serverName;
 
 WzProtocolTitleUI::WzProtocolTitleUI()
 {
@@ -48,15 +51,15 @@ WzProtocolTitleUI::WzProtocolTitleUI()
  * Set the server name
  * \param hostname The hostname or IP address of the server to connect to
  */
-void mpSetServerName(const char *hostname)
+void mpSetServerName(const std::string& hostname)
 {
-	sstrcpy(serverName, hostname);
+	serverName = hostname;
 }
 
 /**
  * @return The hostname or IP address of the server we will connect to.
  */
-const char *mpGetServerName()
+const std::string& mpGetServerName()
 {
 	return serverName;
 }
@@ -106,21 +109,17 @@ TITLECODE WzProtocolTitleUI::run()
 		bMultiMessages = false;
 		break;
 	case CON_TYPESID_START+0: // Lobby button
-		if (getLobbyError() != ERROR_INVALID)
-		{
-			setLobbyError(ERROR_NOERROR);
-		}
-		changeTitleUI(std::make_shared<WzGameFindTitleUI>());
+		changeTitleUI(std::make_shared<WzGameBrowserTitleUI>(wzTitleUICurrent));
 		break;
 	case CON_TYPESID_START+1: // IP button
 		openIPDialog();
 		break;
 	case CON_OK:
 	{
-		sstrcpy(serverName, widgGetString(curScreen, CON_IP));
-		if (serverName[0] == '\0')
+		serverName = widgGetWzString(curScreen, CON_IP).toUtf8();
+		if (serverName.empty())
 		{
-			sstrcpy(serverName, "127.0.0.1");  // Default to localhost.
+			serverName = "127.0.0.1";  // Default to localhost.
 		}
 		bool asSpectator = false;
 		auto pSpectatorCheckbox = dynamic_cast<WzCheckboxButton*>(widgGetFromID(psSettingsScreen, CON_SPECTATOR_BOX));
@@ -130,7 +129,7 @@ TITLECODE WzProtocolTitleUI::run()
 		}
 		hasWaitingIP = true;
 		closeIPDialog();
-		joinGame(serverName, asSpectator);
+		joinGame(serverName.c_str(), asSpectator);
 		break;
 	}
 	case CON_IP_CANCEL:
@@ -209,7 +208,7 @@ void WzProtocolTitleUI::openIPDialog()			//internet options
 	sEdInit.y = CON_IPY;
 	sEdInit.width = CON_NAMEBOXWIDTH;
 	sEdInit.height = CON_NAMEBOXHEIGHT;
-	sEdInit.pText = mpGetServerName();
+	sEdInit.pText = serverName.c_str();
 	sEdInit.pBoxDisplay = intDisplayEditBox;
 	if (!widgAddEditBox(psSettingsScreen, &sEdInit))
 	{

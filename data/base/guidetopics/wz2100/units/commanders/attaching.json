@@ -1,0 +1,31 @@
+{
+	"type": "wz2100.guidetopic.v1",
+	"id": "wz2100::units::commanders::attaching",
+	"title": "Attaching Units",
+	"sort": "01",
+	"visual": {
+		"droidTemplate": {
+			"body": "Body8MBT",
+			"brain": "CommandBrain01",
+			"name": "Command Turret Scorpion Half-tracks",
+			"propulsion": "HalfTrack",
+			"type": "DROID_COMMAND",
+			"weapons": [
+				"CommandTurret1"
+			]
+		}
+	},
+	"contents": [
+		"To attach units to a Commander, select the unit(s), then left-click the Commander you want to attach them to. A symbol will appear next to the assigned unit(s) to signify the attachment.",
+		"",
+		"## Limits:",
+		"",
+		"Commanders have a limit to the amount of units they can control, which is affected by their rank. Promotions are earned by the Commander reaching a dedicated amount of experience points.",
+		"",
+		"After each promotion, the Commander is able to control 2 more units."
+	],
+	"links": [
+		"wz2100::units::commanders::detaching",
+		"wz2100::units::experience"
+	]
+}

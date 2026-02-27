@@ -1,5 +1,15 @@
+if(CMAKE_SYSTEM_NAME MATCHES "Emscripten")
+	set(WZ_USE_SPNG TRUE)
+endif()
+
+set(_png_util_cpp "png_util_libpng.cpp")
+if(WZ_USE_SPNG)
+	set(_png_util_cpp "png_util_spng.cpp")
+endif()
+
 file(GLOB HEADERS
 	"bitimage.h"
+	"culling.h"
 	"gfx_api.h"
 	"gfx_api_formats_def.h"
 	"gfx_api_gl.h"
@@ -14,6 +24,7 @@ file(GLOB HEADERS
 	"pieclip.h"
 	"piedef.h"
 	"piefunc.h"
+	"pielighting.h"
 	"piematrix.h"
 	"piemode.h"
 	"pienormalize.h"
@@ -29,6 +40,7 @@ file(GLOB HEADERS
 
 file(GLOB SRC
 	"bitimage.cpp"
+	"culling.cpp"
 	"gfx_api.cpp"
 	"gfx_api_gl.cpp"
 	"gfx_api_image_basis_priv.cpp"
@@ -42,11 +54,12 @@ file(GLOB SRC
 	"piedraw.cpp"
 	"piefunc.cpp"
 	"pieimage.cpp"
+	"pielighting.cpp"
 	"piematrix.cpp"
 	"piemode.cpp"
 	"piepalette.cpp"
 	"piestate.cpp"
-	"png_util.cpp"
+	"${_png_util_cpp}"
 	"screen.cpp"
 	"tex.cpp"
 	"textdraw.cpp"
@@ -55,9 +68,17 @@ file(GLOB SRC
 
 add_subdirectory(3rdparty/etcpak)
 
-find_package(PNG 1.2 REQUIRED)
-find_package(Freetype REQUIRED)
-find_package(Harfbuzz 1.0 REQUIRED)
+if(WZ_USE_SPNG)
+	find_package(SPNG CONFIG REQUIRED)
+else()
+	find_package(PNG 1.2 REQUIRED)
+endif()
+if(CMAKE_SYSTEM_NAME MATCHES "Emscripten")
+	# We should be using the Emscripten port linker flags for FreeType & Harfbuzz
+else()
+	find_package(Freetype REQUIRED)
+	find_package(Harfbuzz 1.0 REQUIRED)
+endif()
 find_package(Fribidi) # recommended, but optional
 
 include(CheckCXXCompilerFlag)
@@ -67,8 +88,18 @@ set_property(TARGET ivis-opengl PROPERTY FOLDER "lib")
 include(WZTargetConfiguration)
 WZ_TARGET_CONFIGURATION(ivis-opengl)
 
-target_include_directories(ivis-opengl PRIVATE ${HARFBUZZ_INCLUDE_DIRS} ${FREETYPE_INCLUDE_DIR_ft2build})
-target_link_libraries(ivis-opengl PRIVATE framework launchinfo PNG::PNG ${HARFBUZZ_LIBRARIES} ${FREETYPE_LIBRARIES})
+target_link_libraries(ivis-opengl PRIVATE framework launchinfo fmt::fmt)
+if(CMAKE_SYSTEM_NAME MATCHES "Emscripten")
+	# We should be using the Emscripten port linker flags for FreeType & Harfbuzz
+else()
+	target_include_directories(ivis-opengl PRIVATE ${HARFBUZZ_INCLUDE_DIRS} ${FREETYPE_INCLUDE_DIR_ft2build})
+	target_link_libraries(ivis-opengl PRIVATE ${HARFBUZZ_LIBRARIES} ${FREETYPE_LIBRARIES})
+endif()
+if(WZ_USE_SPNG)
+	target_link_libraries(ivis-opengl PRIVATE $<IF:$<TARGET_EXISTS:spng::spng>,spng::spng,spng::spng_static>)
+else()
+	target_link_libraries(ivis-opengl PRIVATE PNG::PNG)
+endif()
 target_link_libraries(ivis-opengl PUBLIC glad)
 target_link_libraries(ivis-opengl PUBLIC optional-lite)
 if (WZ_DEBUG_GFX_API_LEAKS)
@@ -93,51 +124,23 @@ else()
 endif()
 
 if(WZ_ENABLE_BACKEND_VULKAN)
-	find_package(VulkanHeaders 154) # minimum supported version of the Vulkan headers is 154
-	set(_vulkanheaders_dl_gittag "sdk-1.3.231.1")
-	if((NOT VulkanHeaders_FOUND AND NOT ${CMAKE_VERSION} VERSION_LESS "3.11.0") AND (NOT WZ_DISABLE_FETCHCONTENT_GIT_CLONE))
+	find_package(VulkanHeaders 290) # minimum supported version of the Vulkan headers is 290
+	set(_vulkanheaders_dl_gittag "vulkan-sdk-1.3.296.0")
+	if(NOT VulkanHeaders_FOUND AND (NOT WZ_DISABLE_FETCHCONTENT_GIT_CLONE))
 		# Fetch newer Vulkan headers (using FetchContent, which requires CMake 3.11+)
 		include(FetchContent)
 		FetchContent_Declare(
 			vulkan_headers
 			GIT_REPOSITORY https://github.com/KhronosGroup/Vulkan-Headers.git
 			GIT_TAG        ${_vulkanheaders_dl_gittag}
+			# Intentionally do not use the Vulkan-Headers build system
+			# Reference: https://discourse.cmake.org/t/prevent-fetchcontent-makeavailable-to-execute-cmakelists-txt/12704/3
+			SOURCE_SUBDIR dummy
 		)
-		FetchContent_GetProperties(vulkan_headers)
-		if(NOT vulkan_headers_POPULATED)
-			FetchContent_Populate(vulkan_headers)
-		endif()
+		FetchContent_MakeAvailable(vulkan_headers)
 		set(VulkanHeaders_FOUND TRUE)
 		set(VulkanHeaders_INCLUDE_DIRS "${vulkan_headers_SOURCE_DIR}/include")
 		message(STATUS "Using fetched Vulkan headers: ${VulkanHeaders_INCLUDE_DIRS}")
-	elseif((NOT VulkanHeaders_FOUND AND ${CMAKE_VERSION} VERSION_LESS "3.11.0") AND (NOT WZ_DISABLE_FETCHCONTENT_GIT_CLONE))
-		# Fetch newer Vulkan headers using Git directly (on CMake < 3.11)
-		find_package(Git QUIET)
-		if(Git_FOUND)
-			if(EXISTS "${CMAKE_CURRENT_BINARY_DIR}/vulkan_headers" AND IS_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/vulkan_headers")
-				# Because this branch is only executed for CMake < 3.11, use "remove_directory"
-				execute_process(
-					COMMAND ${CMAKE_COMMAND} "-E" "remove_directory" "vulkan_headers"
-					WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
-			endif()
-			execute_process(
-				COMMAND ${GIT_EXECUTABLE} clone https://github.com/KhronosGroup/Vulkan-Headers.git "vulkan_headers"
-				WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-				RESULT_VARIABLE _git_exstatus
-				ERROR_QUIET)
-			if(_git_exstatus EQUAL 0)
-				execute_process(
-					COMMAND ${GIT_EXECUTABLE} checkout "tags/${_vulkanheaders_dl_gittag}" -b version_commit
-					WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/vulkan_headers"
-					RESULT_VARIABLE _git_exstatus
-					ERROR_QUIET)
-			endif()
-			if(_git_exstatus EQUAL 0)
-				set(VulkanHeaders_FOUND TRUE)
-				set(VulkanHeaders_INCLUDE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/vulkan_headers/include")
-				message(STATUS "Using (Git) fetched Vulkan headers: ${VulkanHeaders_INCLUDE_DIRS}")
-			endif()
-		endif()
 	endif()
 	if(VulkanHeaders_FOUND AND TARGET glsl_compilation)
 		target_compile_definitions(ivis-opengl PUBLIC "-DWZ_VULKAN_ENABLED")

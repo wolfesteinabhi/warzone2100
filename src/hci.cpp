@@ -1,7 +1,7 @@
 /*
 	This file is part of Warzone 2100.
 	Copyright (C) 1999-2004  Eidos Interactive
-	Copyright (C) 2005-2020  Warzone 2100 Project
+	Copyright (C) 2005-2024  Warzone 2100 Project
 
 	Warzone 2100 is free software; you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -47,6 +47,7 @@
 #include "lib/widget/bar.h"
 #include "lib/widget/button.h"
 #include "lib/widget/editbox.h"
+#include "screens/helpscreen.h"
 #include "cheat.h"
 #include "console.h"
 #include "design.h"
@@ -74,11 +75,17 @@
 #include "keybind.h"
 #include "qtscript.h"
 #include "chat.h"
+#include "radar.h"
 #include "hci/build.h"
 #include "hci/research.h"
 #include "hci/manufacture.h"
 #include "hci/commander.h"
 #include "notifications.h"
+#include "hci/groups.h"
+#include "screens/chatscreen.h"
+#include "screens/guidescreen.h"
+#include "hci/quickchat.h"
+#include "warzoneconfig.h"
 
 // Empty edit window
 static bool secondaryWindowUp = false;
@@ -163,6 +170,7 @@ static bool Refreshing = false;
 
 /* The widget screen */
 std::shared_ptr<W_SCREEN> psWScreen = nullptr;
+std::shared_ptr<W_HELP_OVERLAY_SCREEN> psUIHelpOverlayScreen = nullptr;
 
 INTMODE intMode;
 
@@ -175,6 +183,7 @@ static enum _edit_pos_mode
 
 OBJECT_MODE objMode;
 std::shared_ptr<BaseObjectsController> interfaceController = nullptr;
+std::shared_ptr<GroupsForum> groupsUI = nullptr;
 
 /* The current stats list being used by the stats screen */
 static BASE_STATS		**ppsStatsList;
@@ -196,7 +205,7 @@ std::vector<DROID_TEMPLATE *>   apsTemplateList;
 std::list<DROID_TEMPLATE>       localTemplates;
 
 /* Store a list of Feature pointers for features to be placed on the map */
-static FEATURE_STATS	**apsFeatureList;
+static FEATURE_STATS	**apsFeatureStatsList;
 
 /* Store a list of component stats pointers for the design screen */
 UDWORD			numComponent;
@@ -258,11 +267,6 @@ static bool intAddCommand();
 /* Stop looking for a structure location */
 static void intStopStructPosition();
 
-static STRUCTURE *CurrentStruct = nullptr;
-static SWORD CurrentStructType = 0;
-static DROID *CurrentDroid = nullptr;
-static DROID_TYPE CurrentDroidType = DROID_ANY;
-
 /******************Power Bar Stuff!**************/
 
 /* Set the shadow for the PowerBar */
@@ -274,8 +278,31 @@ static void processProximityButtons(UDWORD id);
 // count the number of selected droids of a type
 static SDWORD intNumSelectedDroids(UDWORD droidType);
 
-static void parseChatMessageModifiers(InGameChatMessage &message);
+// In-Game Options button Widget
 
+class W_INGAMEOPTIONS_BUTTON : public W_BUTTON
+{
+protected:
+	W_INGAMEOPTIONS_BUTTON()
+	{ }
+	void initialize();
+public:
+	static std::shared_ptr<W_INGAMEOPTIONS_BUTTON> make();
+
+	void display(int xOffset, int yOffset) override;
+	std::string getTip() override;
+
+	int getMarginX() const { return marginX; }
+	int getMarginTop() const { return marginTop; }
+
+private:
+	uint8_t currentAlphaValue() const;
+	bool isHighlighted() const;
+
+private:
+	int marginX = 16;
+	int marginTop = 18;
+};
 
 /***************************GAME CODE ****************************/
 
@@ -340,7 +367,7 @@ void setReticuleButtonDimensions(W_BUTTON &button, const WzString &filename)
 		button.setGeometry(button.x(), button.y(), image->Width / 2, image->Height / 2);
 
 		// add a custom hit-testing function that uses a tighter bounding ellipse
-		button.setCustomHitTest([](WIDGET *psWidget, int x, int y) -> bool {
+		button.setCustomHitTest([](const WIDGET *psWidget, int x, int y) -> bool {
 
 			// determine center of ellipse contained within the bounding rect
 			float centerX = ((psWidget->x()) + (psWidget->x() + psWidget->width())) / 2.f;
@@ -356,6 +383,12 @@ void setReticuleButtonDimensions(W_BUTTON &button, const WzString &filename)
 			return partX + partY <= 1.f;
 		});
 	}
+}
+
+optional<std::string> getReticuleButtonDisplayFilename(int ButId)
+{
+	ASSERT_OR_RETURN(nullopt, (ButId >= 0) && (ButId < NUMRETBUTS), "Invalid ButId: %d", ButId);
+	return retbutstats[ButId].filename.toUtf8();
 }
 
 void setReticuleStats(int ButId, std::string tip, std::string filename, std::string filenameDown, const playerCallbackFunc& callbackFunc)
@@ -856,9 +889,11 @@ bool createReplayControllerOverlay()
 
 	// Position the Replay Controller form
 	replayControllerForm->setCalcLayout([](WIDGET *psWidget) {
-		int x0 = screenWidth - psWidget->width() - (REPLAY_ACTION_BUTTONS_SPACING * 2);
+		auto psOptionsButton = std::dynamic_pointer_cast<W_INGAMEOPTIONS_BUTTON>(widgFormGetFromID(psWScreen->psForm, IDRET_OPTIONS));
+		bool visibleOptionsbutton = (psOptionsButton != nullptr && psOptionsButton->visible());
+		int x0 = screenWidth - (visibleOptionsbutton ? psOptionsButton->getMarginX() + psOptionsButton->width() : 0) - psWidget->width() - (REPLAY_ACTION_BUTTONS_SPACING * 2);
 		int y0 = 0;
-		psWidget->move(x0, y0);
+		psWidget->move(std::max<int>(0, x0), y0);
 	});
 
 	widgRegisterOverlayScreenOnTopOfScreen(replayOverlayScreen, psWScreen);
@@ -885,7 +920,7 @@ bool intInitialise()
 	apsTemplateList.clear();
 
 	/* Create storage for the feature list */
-	apsFeatureList = (FEATURE_STATS **)malloc(sizeof(FEATURE_STATS *) * MAXFEATURES);
+	apsFeatureStatsList = (FEATURE_STATS **)malloc(sizeof(FEATURE_STATS *) * MAXFEATURES);
 
 	/* Create storage for the component list */
 	apsComponentList = (COMPONENT_STATS **)malloc(sizeof(COMPONENT_STATS *) * MAXCOMPONENT);
@@ -951,6 +986,9 @@ bool intInitialise()
 		});
 	}, GAME_TICKS_PER_SEC + GAME_TICKS_PER_SEC);
 
+	// refresh defaults for quick chat
+	quickChatInitInGame();
+
 	return true;
 }
 
@@ -958,24 +996,28 @@ bool intInitialise()
 /* Shut down the in game interface */
 void interfaceShutDown()
 {
+	intRemoveIntelMapNoAnim(); // always call to ensure overlay screen is destroyed
+
 	if (replayOverlayScreen)
 	{
 		widgRemoveOverlayScreen(replayOverlayScreen);
 		replayOverlayScreen = nullptr;
 	}
 
+	groupsUI = nullptr;
+
 	psWScreen = nullptr;
 
 	free(apsStructStatsList);
 	apsTemplateList.clear();
-	free(apsFeatureList);
+	free(apsFeatureStatsList);
 	free(apsComponentList);
 	free(apsExtraSysList);
 	psSelectedBuilder = nullptr;
 
 	psWScreen = nullptr;
 	apsStructStatsList = nullptr;
-	apsFeatureList = nullptr;
+	apsFeatureStatsList = nullptr;
 	apsComponentList = nullptr;
 	apsExtraSysList = nullptr;
 
@@ -986,9 +1028,16 @@ void interfaceShutDown()
 	{
 		i = RETBUTSTATS();
 	}
+
+	shutdownChatScreen();
+	closeGuideScreen();
+	ChatDialogUp = false;
+
+	bAllowOtherKeyPresses = true;
 }
 
 static bool IntRefreshPending = false;
+static bool IntGroupsRefreshPending = false;
 
 // Set widget refresh pending flag.
 //
@@ -1002,20 +1051,39 @@ bool intIsRefreshing()
 	return Refreshing;
 }
 
+void intRefreshGroupsUI()
+{
+	IntGroupsRefreshPending = true;
+}
+
+void intInformInterfaceObjectRemoved(const BASE_OBJECT *psObj)
+{
+	if (psSelectedBuilder == psObj)
+	{
+		debug(LOG_INFO, "Selected builder removed");
+		psSelectedBuilder = nullptr;
+	}
+	// intDoScreenRefresh handles refreshing the backing stores for any open interfaceController
+}
+
+bool intAddRadarWidget()
+{
+	auto radarWidget = getRadarWidget();
+	ASSERT_OR_RETURN(false, radarWidget != nullptr, "Failed to get radar widget?");
+	psWScreen->psForm->attach(radarWidget, WIDGET::ChildZPos::Back);
+	return true;
+}
 
 // see if a delivery point is selected
 static FLAG_POSITION *intFindSelectedDelivPoint()
 {
-	FLAG_POSITION *psFlagPos;
-
 	ASSERT_OR_RETURN(nullptr, selectedPlayer < MAX_PLAYERS, "Not supported selectedPlayer: %" PRIu32 "", selectedPlayer);
 
-	for (psFlagPos = apsFlagPosLists[selectedPlayer]; psFlagPos;
-	     psFlagPos = psFlagPos->psNext)
+	for (const auto& psFlag : apsFlagPosLists[selectedPlayer])
 	{
-		if (psFlagPos->selected && (psFlagPos->type == POS_DELIVERY))
+		if (psFlag->selected && psFlag->type == POS_DELIVERY)
 		{
-			return psFlagPos;
+			return psFlag;
 		}
 	}
 
@@ -1026,6 +1094,15 @@ static FLAG_POSITION *intFindSelectedDelivPoint()
 //
 void intDoScreenRefresh()
 {
+	if (IntGroupsRefreshPending && getGroupButtonEnabled())
+	{
+		if (groupsUI)
+		{
+			groupsUI->updateData();
+		}
+		IntGroupsRefreshPending = false;
+	}
+
 	if (!IntRefreshPending)
 	{
 		return;
@@ -1157,6 +1234,8 @@ void intResetScreen(bool NoAnim, bool skipMissionResultScreen /*= false*/)
 		}
 	}
 
+	auto startingIntMode = intMode;
+
 	switch (intMode)
 	{
 	case INT_DESIGN:
@@ -1197,7 +1276,10 @@ void intResetScreen(bool NoAnim, bool skipMissionResultScreen /*= false*/)
 	{
 		intRemoveMissionResultNoAnim();
 	}
-	intRemoveDesign();
+	if (startingIntMode == INT_DESIGN)
+	{
+		intRemoveDesign();
+	}
 	intHidePowerBar();
 
 	if (interfaceController)
@@ -1209,6 +1291,7 @@ void intResetScreen(bool NoAnim, bool skipMissionResultScreen /*= false*/)
 	intMode = INT_NORMAL;
 	//clearSelelection() sets IntRefreshPending = true by calling intRefreshScreen() but if we're doing this then we won't need to refresh - hopefully!
 	IntRefreshPending = false;
+	intShowGroupSelectionMenu();
 }
 
 void intOpenDebugMenu(OBJECT_TYPE id)
@@ -1246,12 +1329,12 @@ void intOpenDebugMenu(OBJECT_TYPE id)
 		editPosMode = IED_NOPOS;
 		break;
 	case OBJ_FEATURE:
-		for (unsigned i = 0; i < std::min<unsigned>(numFeatureStats, MAXFEATURES); ++i)
+		for (unsigned i = 0, end = std::min<unsigned>(asFeatureStats.size(), MAXFEATURES); i < end; ++i)
 		{
-			apsFeatureList[i] = asFeatureStats + i;
+			apsFeatureStatsList[i] = &asFeatureStats[i];
 		}
-		ppsStatsList = (BASE_STATS **)apsFeatureList;
-		intAddDebugStatsForm(ppsStatsList, std::min<unsigned>(numFeatureStats, MAXFEATURES));
+		ppsStatsList = (BASE_STATS **)apsFeatureStatsList;
+		intAddDebugStatsForm(ppsStatsList, std::min<unsigned>(asFeatureStats.size(), MAXFEATURES));
 		intMode = INT_EDITSTAT;
 		editPosMode = IED_NOPOS;
 		break;
@@ -1276,7 +1359,6 @@ static void intProcessEditStats(UDWORD id)
 			debugMenuDroidDeliveryPoint.factoryInc = 0;
 			debugMenuDroidDeliveryPoint.player = selectedPlayer;
 			debugMenuDroidDeliveryPoint.selected = false;
-			debugMenuDroidDeliveryPoint.psNext = nullptr;
 			startDeliveryPosition(&debugMenuDroidDeliveryPoint);
 		}
 		else
@@ -1311,7 +1393,6 @@ INT_RETVAL intRunWidgets()
 	{
 		if (bRequestLoad)
 		{
-			NET_InitPlayers();	// reinitialize starting positions
 			loopMissionState = LMS_LOADGAME;
 			sstrcpy(saveGameName, sRequestResult);
 		}
@@ -1381,11 +1462,6 @@ INT_RETVAL intRunWidgets()
 		intRunOrder();
 	}
 
-	if (MultiMenuUp)
-	{
-		intRunMultiMenu();
-	}
-
 	/* Extra code for the design screen to deal with the shadow bar graphs */
 	if (intMode == INT_DESIGN)
 	{
@@ -1413,7 +1489,7 @@ INT_RETVAL intRunWidgets()
 		/*****************  Reticule buttons  *****************/
 
 		case IDRET_COMMAND:
-			if (isKeyMapEditorUp || selectedPlayerIsSpectator)
+			if (selectedPlayerIsSpectator)
 			{
 				break;
 			}
@@ -1424,7 +1500,7 @@ INT_RETVAL intRunWidgets()
 			break;
 
 		case IDRET_BUILD:
-			if (isKeyMapEditorUp || selectedPlayerIsSpectator)
+			if (selectedPlayerIsSpectator)
 			{
 				break;
 			}
@@ -1435,7 +1511,7 @@ INT_RETVAL intRunWidgets()
 			break;
 
 		case IDRET_MANUFACTURE:
-			if (isKeyMapEditorUp || selectedPlayerIsSpectator)
+			if (selectedPlayerIsSpectator)
 			{
 				break;
 			}
@@ -1446,7 +1522,7 @@ INT_RETVAL intRunWidgets()
 			break;
 
 		case IDRET_RESEARCH:
-			if (isKeyMapEditorUp || selectedPlayerIsSpectator)
+			if (selectedPlayerIsSpectator)
 			{
 				break;
 			}
@@ -1457,10 +1533,6 @@ INT_RETVAL intRunWidgets()
 			break;
 
 		case IDRET_INTEL_MAP:
-			if (isKeyMapEditorUp)
-			{
-				break;
-			}
 			// check if RMB was clicked
 			if (widgGetButtonKey_DEPRECATED(psWScreen) == WKEY_SECONDARY)
 			{
@@ -1477,7 +1549,7 @@ INT_RETVAL intRunWidgets()
 			break;
 
 		case IDRET_DESIGN:
-			if (isKeyMapEditorUp || selectedPlayerIsSpectator)
+			if (selectedPlayerIsSpectator)
 			{
 				break;
 			}
@@ -1494,10 +1566,6 @@ INT_RETVAL intRunWidgets()
 			break;
 
 		case IDRET_CANCEL:
-			if (isKeyMapEditorUp)
-			{
-				break;
-			}
 			intResetScreen(false);
 			psCurrentMsg = nullptr;
 			reticuleCallback(RETBUT_CANCEL);
@@ -1522,33 +1590,6 @@ INT_RETVAL intRunWidgets()
 			quitting = true;
 			break;
 
-		// process our chatbox
-		case CHAT_EDITBOX:
-			{
-				auto message = InGameChatMessage(selectedPlayer, widgGetString(psWScreen, CHAT_EDITBOX));
-				attemptCheatCode(message.text);		// parse the message
-
-				if ((int) widgGetUserData2(psWScreen, CHAT_EDITBOX) == CHAT_TEAM)
-				{
-					message.toAllies = true;
-				}
-				else
-				{
-					parseChatMessageModifiers(message);
-				}
-
-				if (strlen(message.text))
-				{
-					message.send();
-				}
-
-				inputLoseFocus();
-				bAllowOtherKeyPresses = true;
-				widgDelete(psWScreen, CHAT_CONSOLEBOX);
-				ChatDialogUp = false;
-				break;
-			}
-
 		/* Default case passes remaining IDs to appropriate function */
 		default:
 			switch (intMode)
@@ -1572,13 +1613,13 @@ INT_RETVAL intRunWidgets()
 				intProcessInGameOptions(retID);
 				break;
 			case INT_MULTIMENU:
-				intProcessMultiMenu(retID);
+				// no-op here
 				break;
 			case INT_DESIGN:
 				intProcessDesign(retID);
 				break;
 			case INT_INTELMAP:
-				intProcessIntelMap(retID);
+				// no-op here
 				break;
 			case INT_TRANSPORTER:
 				intProcessTransporter(retID);
@@ -1609,7 +1650,7 @@ INT_RETVAL intRunWidgets()
 				// Set the droid order
 				if (intNumSelectedDroids(DROID_CONSTRUCT) == 0
 					&& intNumSelectedDroids(DROID_CYBORG_CONSTRUCT) == 0
-					&& psSelectedBuilder != nullptr && isConstructionDroid(psSelectedBuilder))
+					&& psSelectedBuilder != nullptr && psSelectedBuilder->isConstructionDroid())
 				{
 					orderDroidStatsTwoLocDir(psSelectedBuilder, DORDER_LINEBUILD, (STRUCTURE_STATS *)psPositionStats, pos.x, pos.y, pos2.x, pos2.y, getBuildingDirection(), ModeQueue);
 				}
@@ -1702,7 +1743,6 @@ INT_RETVAL intRunWidgets()
 
 						if (psBuilding->type == REF_DEMOLISH)
 						{
-							STRUCTURE tmp(0, selectedPlayer);
 							MAPTILE *psTile = mapTile(map_coord(pos.x), map_coord(pos.y));
 							FEATURE *psFeature = (FEATURE *)psTile->psObject;
 							STRUCTURE *psStructure = (STRUCTURE *)psTile->psObject;
@@ -1721,6 +1761,7 @@ INT_RETVAL intRunWidgets()
 						{
 							STRUCTURE tmp(generateNewObjectId(), selectedPlayer);
 							STRUCTURE *psStructure = &tmp;
+							tmp.state = SAS_NORMAL;
 							tmp.pStructureType = (STRUCTURE_STATS *)psPositionStats;
 							tmp.pos = {pos.x, pos.y, map_Height(pos.x, pos.y) + world_coord(1) / 10};
 
@@ -1732,7 +1773,7 @@ INT_RETVAL intRunWidgets()
 							// the fact that we're cheating ourselves a new
 							// structure.
 							std::string msg = astringf(_("Player %u is cheating (debug menu) him/herself a new structure: %s."),
-										selectedPlayer, getStatsName(psStructure->pStructureType));
+										selectedPlayer, getLocalizedStatsName(psStructure->pStructureType));
 							sendInGameSystemMessage(msg.c_str());
 							Cheated = true;
 						}
@@ -1741,7 +1782,7 @@ INT_RETVAL intRunWidgets()
 					{
 						// Send a text message to all players, notifying them of the fact that we're cheating ourselves a new feature.
 						std::string msg = astringf(_("Player %u is cheating (debug menu) him/herself a new feature: %s."),
-									selectedPlayer, getStatsName(psPositionStats));
+									selectedPlayer, getLocalizedStatsName(psPositionStats));
 						sendInGameSystemMessage(msg.c_str());
 						Cheated = true;
 						// Notify the other hosts that we've just built ourselves a feature
@@ -1794,7 +1835,7 @@ INT_RETVAL intRunWidgets()
 	const DebugInputManager& dbgInputManager = gInputManager.debugManager();
 	if ((testPlayerHasLost() || testPlayerHasWon()) && !bMultiPlayer && intMode != INT_MISSIONRES && !dbgInputManager.debugMappingsAllowed())
 	{
-		debug(LOG_ERROR, "PlayerHasLost Or Won");
+		debug(LOG_INFO, "PlayerHasLost Or Won");
 		intResetScreen(true);
 		retCode = INT_QUIT;
 	}
@@ -1871,7 +1912,7 @@ void intObjectSelected(BASE_OBJECT *psObj)
 
 				if (structure->status == SS_BUILT)
 				{
-					if (StructIsFactory(structure))
+					if (structure->isFactory())
 					{
 						intAddManufacture();
 						break;
@@ -1914,6 +1955,7 @@ void intStartStructPosition(BASE_STATS *psStats)
 }
 
 
+
 /* Stop looking for a structure location */
 static void intStopStructPosition()
 {
@@ -1950,12 +1992,87 @@ void intDisplayWidgets()
 		}
 	}
 
+	bool desiredRadarVisibility = false;
+	if (!gameUpdatePaused())
+	{
+		desiredRadarVisibility = radarVisible();
+
+		cleanupOldBeaconMessages();
+
+		/* Ensure that any text messages are displayed at bottom of screen */
+		displayConsoleMessages();
+	}
+
+	auto radarWidget = getRadarWidget();
+	if (radarWidget && (desiredRadarVisibility != radarWidget->visible()))
+	{
+		(desiredRadarVisibility) ? radarWidget->show() : radarWidget->hide();
+	}
+
 	widgDisplayScreen(psWScreen);
 
 	if (bLoadSaveUp)
 	{
 		displayLoadSave();
 	}
+}
+
+void intShowWidgetHelp()
+{
+	ASSERT_OR_RETURN(, psWScreen != nullptr, "psWScreen is null?");
+
+	if (!psUIHelpOverlayScreen)
+	{
+		// Initialize the help overlay screen
+		psUIHelpOverlayScreen = W_HELP_OVERLAY_SCREEN::make(
+			// close handler
+			[](std::shared_ptr<W_HELP_OVERLAY_SCREEN>){
+				psUIHelpOverlayScreen.reset();
+
+				if (!bMultiPlayer || !NetPlay.bComms)
+				{
+					if (gamePaused())
+					{
+						// unpause game
+
+						/* Get it going again */
+						setGamePauseStatus(false);
+						setConsolePause(false);
+						setScriptPause(false);
+						setAudioPause(false);
+						setScrollPause(false);
+
+						/* And start the clock again */
+						gameTimeStart();
+					}
+				}
+			}
+		);
+	}
+
+	if (!bMultiPlayer || !NetPlay.bComms)
+	{
+		if (!gamePaused())
+		{
+			// pause game
+			setGamePauseStatus(true);
+			setConsolePause(true);
+			setScriptPause(true);
+			setAudioPause(true);
+			setScrollPause(true);
+
+			/* And stop the clock */
+			gameTimeStop();
+		}
+	}
+
+	psUIHelpOverlayScreen->setHelpFromWidgets(psWScreen->psForm);
+	widgRegisterOverlayScreenOnTopOfScreen(psUIHelpOverlayScreen, psWScreen);
+}
+
+bool intHelpOverlayIsUp()
+{
+	return psUIHelpOverlayScreen != nullptr;
 }
 
 /* Tell the interface when the screen has been resized */
@@ -2003,9 +2120,210 @@ void intAlliedResearchChanged()
 	}
 }
 
+void intGroupsChanged(optional<UBYTE> selectedGroup)
+{
+	if (groupsUI)
+	{
+		intRefreshGroupsUI();
+		if (selectedGroup.has_value() && selectedGroup.value() != UBYTE_MAX)
+		{
+			groupsUI->updateSelectedGroup(selectedGroup.value());
+		}
+	}
+}
+
+void intGroupDamaged(UBYTE group, uint64_t additionalDamage, bool unitKilled)
+{
+	if (groupsUI)
+	{
+		groupsUI->addGroupDamageForCurrentTick(group, additionalDamage, unitKilled);
+	}
+}
+
+void intCommanderGroupChanged(const DROID *psCommander) // psCommander may be null!
+{
+	intGroupsChanged(); // just trigger full group change event
+}
+
+void intCommanderGroupDamaged(const DROID *psCommander, uint64_t additionalDamage, bool unitKilled)
+{
+	if (groupsUI)
+	{
+		groupsUI->addCommanderGroupDamageForCurrentTick(psCommander, additionalDamage, unitKilled);
+	}
+}
+
+bool intShowGroupSelectionMenu()
+{
+	bool isSpectator = (bMultiPlayer && selectedPlayer < NetPlay.players.size() && NetPlay.players[selectedPlayer].isSpectator);
+	if (getGroupButtonEnabled() && !isSpectator)
+	{
+		GroupsForum* groupsUIFormWidg = (GroupsForum*)widgGetFromID(psWScreen, IDOBJ_GROUP);
+		if (!groupsUIFormWidg)
+		{
+			if (!groupsUI)
+			{
+				groupsUI = GroupsForum::make();
+			}
+			psWScreen->psForm->attach(groupsUI);
+		}
+
+		groupsUI->show();
+	}
+	else
+	{
+		widgDelete(psWScreen, IDOBJ_GROUP);
+		groupsUI.reset();
+	}
+	return true;
+}
+
+// MARK: W_INGAMEOPTIONS_BUTTON
+
+std::shared_ptr<W_INGAMEOPTIONS_BUTTON> W_INGAMEOPTIONS_BUTTON::make()
+{
+	class make_shared_enabler: public W_INGAMEOPTIONS_BUTTON {};
+	auto widget = std::make_shared<make_shared_enabler>();
+	widget->initialize();
+	return widget;
+}
+
+void W_INGAMEOPTIONS_BUTTON::initialize()
+{
+	id = IDRET_OPTIONS;
+	setGeometry(0, 0, RET_BUTWIDTH, RET_BUTHEIGHT);
+}
+
+uint8_t W_INGAMEOPTIONS_BUTTON::currentAlphaValue() const
+{
+	uint32_t alphaPercentage = war_getOptionsButtonVisibility();
+
+	if (isHighlighted())
+	{
+		alphaPercentage = 100;
+	}
+
+	return static_cast<uint8_t>((alphaPercentage * 255) / 100);
+}
+
+bool W_INGAMEOPTIONS_BUTTON::isHighlighted() const
+{
+	return ((getState() & WBUT_HIGHLIGHT) != 0) || InGameOpUp;
+}
+
+void W_INGAMEOPTIONS_BUTTON::display(int xOffset, int yOffset)
+{
+	const int x0 = xOffset + x();
+	const int y0 = yOffset + y();
+	bool butDisabled = getState() & WBUT_DISABLE;
+
+	uint8_t alphaValue = currentAlphaValue();
+
+	if (butDisabled)
+	{
+		iV_DrawImageTint(IntImages, IMAGE_RETICULE_GREY, x0, y0, pal_RGBA(255,255,255,alphaValue), Vector2f{width(), height()});
+		return;
+	}
+
+	bool Down = getState() & (WBUT_DOWN | WBUT_CLICKLOCK);
+	if (Down)
+	{
+		iV_DrawImageTint(IntImages, IMAGE_INGAMEOPTIONS_DOWN, x0, y0, pal_RGBA(255,255,255,alphaValue), Vector2f{width(), height()});
+	}
+	else
+	{
+		iV_DrawImageTint(IntImages, IMAGE_INGAMEOPTIONS_UP, x0, y0, pal_RGBA(255,255,255,alphaValue), Vector2f{width(), height()});
+	}
+
+	if (isHighlighted())
+	{
+		iV_DrawImageTint(IntImages, IMAGE_RETICULE_HILIGHT, x0, y0, pal_RGBA(255,255,255,alphaValue), Vector2f{width(), height()});
+	}
+}
+
+std::string W_INGAMEOPTIONS_BUTTON::getTip()
+{
+	if (!InGameOpUp)
+	{
+		return  _("Open In-Game Options");
+	}
+	else
+	{
+		return  _("Close In-Game Options");
+	}
+}
+
+bool intAddInGameOptionsButton()
+{
+	bool hiddenOptionsButton = war_getOptionsButtonVisibility() == 0;
+
+	auto psExistingBut = widgGetFromID(psWScreen, IDRET_OPTIONS);
+	if (psExistingBut != nullptr)
+	{
+		bool oldButtonHiddenStatus = !psExistingBut->visible();
+		psExistingBut->show(!hiddenOptionsButton);
+
+		// Trigger Re-position of the Replay Controller form
+		if (replayOverlayScreen && (oldButtonHiddenStatus != hiddenOptionsButton))
+		{
+			replayOverlayScreen->screenSizeDidChange(screenWidth, screenHeight, screenWidth, screenHeight);
+		}
+		return false;
+	}
+
+	auto button = W_INGAMEOPTIONS_BUTTON::make();
+	if (!button)
+	{
+		debug(LOG_ERROR, "Failed to create in game options button");
+	}
+	else
+	{
+		psWScreen->psForm->attach(button);
+		setReticuleButtonDimensions(*button, "image_ingameoptions_up.png");
+		button->setCalcLayout(LAMBDA_CALCLAYOUT_SIMPLE({
+			auto psIngameOptButton = std::dynamic_pointer_cast<W_INGAMEOPTIONS_BUTTON>(psWidget->shared_from_this());
+			ASSERT_OR_RETURN(, psIngameOptButton != nullptr, "Wrong button type?");
+			int w = psWidget->width();
+			int h = psWidget->height();
+			int x0 = screenWidth - (w + psIngameOptButton->getMarginX());
+			int y0 = psIngameOptButton->getMarginTop();
+			psWidget->setGeometry(x0, y0, w, h);
+		}));
+		button->addOnClickHandler([](W_BUTTON&) {
+			widgScheduleTask([](){
+				kf_addInGameOptions();
+			});
+		});
+
+		if (hiddenOptionsButton)
+		{
+			button->hide();
+		}
+	}
+
+	// Trigger Re-position of the Replay Controller form
+	if (replayOverlayScreen)
+	{
+		replayOverlayScreen->screenSizeDidChange(screenWidth, screenHeight, screenWidth, screenHeight);
+	}
+
+	return true;
+}
+
+void intHideInGameOptionsButton()
+{
+	auto psOptionsBut = widgGetFromID(psWScreen, IDRET_OPTIONS);
+	if (psOptionsBut != nullptr)
+	{
+		psOptionsBut->hide();
+	}
+}
+
 /* Add the reticule widgets to the widget screen */
 bool intAddReticule()
 {
+	intAddInGameOptionsButton();
+
 	if (ReticuleUp)
 	{
 		return true; // all fine
@@ -2255,7 +2573,7 @@ static bool intAddDebugStatsForm(BASE_STATS **_ppsStatsList, UDWORD numStats)
 		statList->addWidgetToLayout(button);
 
 		BASE_STATS *Stat = _ppsStatsList[i];
-		WzString tipString = getStatsName(_ppsStatsList[i]);
+		WzString tipString = getLocalizedStatsName(_ppsStatsList[i]);
 		unsigned powerCost = 0;
 		W_BARGRAPH *bar;
 		if (Stat->hasType(STAT_STRUCTURE))  // It's a structure.
@@ -2286,7 +2604,7 @@ static bool intAddDebugStatsForm(BASE_STATS **_ppsStatsList, UDWORD numStats)
 			bar = widgAddBarGraph(psWScreen, &sBarInit);
 			bar->setBackgroundColour(WZCOL_BLACK);
 		}
-		WzString costString = WzString::fromUtf8(astringf(_("Cost: %u"), powerCost));
+		WzString costString = WzString::format(_("Cost: %u"), powerCost);
 		tipString.append("\n");
 		tipString.append(costString);
 		button->setTip(tipString.toUtf8().c_str());
@@ -2363,7 +2681,14 @@ static bool intAddCommand()
 //sets up the Intelligence Screen as far as the interface is concerned
 void addIntelScreen()
 {
+	if (intMode == INT_INTELMAP)
+	{
+		// screen is already up - do nothing
+		return;
+	}
+
 	intResetScreen(false);
+	intHideGroupSelectionMenu();
 
 	intMode = INT_INTELMAP;
 
@@ -2390,7 +2715,7 @@ void addTransporterInterface(DROID *psSelected, bool onMission)
 }
 
 /*sets which list of structures to use for the interface*/
-STRUCTURE *interfaceStructList()
+StructureList *interfaceStructList()
 {
 	if (selectedPlayer >= MAX_PLAYERS)
 	{
@@ -2399,11 +2724,11 @@ STRUCTURE *interfaceStructList()
 
 	if (offWorldKeepLists)
 	{
-		return mission.apsStructLists[selectedPlayer];
+		return &mission.apsStructLists[selectedPlayer];
 	}
 	else
 	{
-		return apsStructLists[selectedPlayer];
+		return &apsStructLists[selectedPlayer];
 	}
 }
 
@@ -2433,11 +2758,6 @@ void stopReticuleButtonFlash(UDWORD buttonID)
 // show selected widget from reticule menu
 void intShowWidget(int buttonID)
 {
-	if (isKeyMapEditorUp)
-	{
-		return;
-	}
-
 	switch (buttonID)
 	{
 	case RETBUT_FACTORY:
@@ -2484,6 +2804,20 @@ void intShowWidget(int buttonID)
 	}
 }
 
+void intHideGroupSelectionMenu()
+{
+	if (groupsUI)
+	{
+		groupsUI->hide();
+	}
+
+	if (bMultiPlayer && selectedPlayer < NetPlay.players.size() && NetPlay.players[selectedPlayer].isSpectator)
+	{
+		// skip showing groups UI if selectedPlayer is spectator
+		widgDelete(psWScreen, IDOBJ_GROUP);
+		groupsUI.reset();
+	}
+}
 
 //displays the Power Bar
 void intShowPowerBar()
@@ -2519,7 +2853,6 @@ void forceHidePowerBar(bool forceSetPowerBarUpState)
 /* Add the Proximity message buttons */
 bool intAddProximityButton(PROXIMITY_DISPLAY *psProxDisp, UDWORD inc)
 {
-	PROXIMITY_DISPLAY	*psProxDisp2;
 	UDWORD				cnt;
 
 	if (selectedPlayer >= MAX_PLAYERS)
@@ -2537,9 +2870,13 @@ bool intAddProximityButton(PROXIMITY_DISPLAY *psProxDisp, UDWORD inc)
 		for (cnt = IDPROX_START; cnt < IDPROX_END; cnt++)
 		{
 			// go down the prox msgs and see if it's free.
-			for (psProxDisp2 = apsProxDisp[selectedPlayer]; psProxDisp2 && psProxDisp2->buttonID != cnt; psProxDisp2 = psProxDisp2->psNext) {}
+			const auto& proxDispList = apsProxDisp[selectedPlayer];
+			auto proxDispIt = std::find_if(proxDispList.begin(), proxDispList.end(), [cnt](PROXIMITY_DISPLAY* pd)
+			{
+				return pd->buttonID == cnt;
+			});
 
-			if (psProxDisp2 == nullptr)	// value was unused.
+			if (proxDispIt == proxDispList.end())	// value was unused.
 			{
 				sBFormInit.id = cnt;
 				break;
@@ -2581,8 +2918,6 @@ void intRemoveProximityButton(PROXIMITY_DISPLAY *psProxDisp)
 /*deals with the proximity message when clicked on*/
 void processProximityButtons(UDWORD id)
 {
-	PROXIMITY_DISPLAY	*psProxDisp;
-
 	if (!doWeDrawProximitys())
 	{
 		return;
@@ -2591,20 +2926,17 @@ void processProximityButtons(UDWORD id)
 	if (selectedPlayer >= MAX_PLAYERS) { return; /* no-op */ }
 
 	//find which proximity display this relates to
-	psProxDisp = nullptr;
-	for (psProxDisp = apsProxDisp[selectedPlayer]; psProxDisp; psProxDisp = psProxDisp->psNext)
+	const auto& proxDispList = apsProxDisp[selectedPlayer];
+	auto proxDispIt = std::find_if(proxDispList.begin(), proxDispList.end(), [id](PROXIMITY_DISPLAY* psProxDisp)
 	{
-		if (psProxDisp->buttonID == id)
-		{
-			break;
-		}
-	}
-	if (psProxDisp)
+		return psProxDisp->buttonID == id;
+	});
+	if (proxDispIt != proxDispList.end())
 	{
 		//if not been read - display info
-		if (!psProxDisp->psMessage->read)
+		if (!(*proxDispIt)->psMessage->read)
 		{
-			displayProximityMessage(psProxDisp);
+			displayProximityMessage(*proxDispIt);
 		}
 	}
 }
@@ -2618,7 +2950,6 @@ void	setKeyButtonMapping(UDWORD	val)
 // count the number of selected droids of a type
 static SDWORD intNumSelectedDroids(UDWORD droidType)
 {
-	DROID	*psDroid;
 	SDWORD	num;
 
 	if (selectedPlayer >= MAX_PLAYERS)
@@ -2627,7 +2958,7 @@ static SDWORD intNumSelectedDroids(UDWORD droidType)
 	}
 
 	num = 0;
-	for (psDroid = apsDroidLists[selectedPlayer]; psDroid; psDroid = psDroid->psNext)
+	for (const DROID* psDroid : apsDroidLists[selectedPlayer])
 	{
 		if (psDroid->selected && psDroid->droidType == droidType)
 		{
@@ -2648,16 +2979,19 @@ int intGetResearchState()
 	}
 
 	bool resFree = false;
-	for (STRUCTURE *psStruct = interfaceStructList(); psStruct != nullptr; psStruct = psStruct->psNext)
+	StructureList* intStrList = interfaceStructList();
+	if (intStrList)
 	{
-		if (psStruct->pStructureType->type == REF_RESEARCH &&
-		    psStruct->status == SS_BUILT &&
-		    getResearchStats(psStruct) == nullptr)
+		for (STRUCTURE* psStruct : *intStrList)
 		{
-			resFree = true;
-			break;
+			if (psStruct->pStructureType->type == REF_RESEARCH &&
+				psStruct->status == SS_BUILT &&
+				getResearchStats(psStruct) == nullptr)
+			{
+				resFree = true;
+				break;
+			}
 		}
-
 	}
 
 	int count = 0;
@@ -2709,172 +3043,6 @@ bool intCheckReticuleButEnabled(UDWORD id)
 	return false;
 }
 
-// Look through the players structures and find the next one of type structType.
-//
-static STRUCTURE *intGotoNextStructureType(UDWORD structType)
-{
-	STRUCTURE	*psStruct;
-	bool Found = false;
-
-	if ((SWORD)structType != CurrentStructType)
-	{
-		CurrentStruct = nullptr;
-		CurrentStructType = (SWORD)structType;
-	}
-
-	if (CurrentStruct != nullptr)
-	{
-		psStruct = CurrentStruct;
-	}
-	else
-	{
-		psStruct = interfaceStructList();
-	}
-
-	for (; psStruct != nullptr; psStruct = psStruct->psNext)
-	{
-		if ((psStruct->pStructureType->type == structType || structType == REF_ANY) && psStruct->status == SS_BUILT)
-		{
-			if (psStruct != CurrentStruct)
-			{
-				clearSelection();
-				psStruct->selected = true;
-				CurrentStruct = psStruct;
-				Found = true;
-				break;
-			}
-		}
-	}
-
-	// Start back at the beginning?
-	if ((!Found) && (CurrentStruct != nullptr))
-	{
-		for (psStruct = interfaceStructList(); psStruct != CurrentStruct && psStruct != nullptr; psStruct = psStruct->psNext)
-		{
-			if ((psStruct->pStructureType->type == structType || structType == REF_ANY) && psStruct->status == SS_BUILT)
-			{
-				if (psStruct != CurrentStruct)
-				{
-					clearSelection();
-					psStruct->selected = true;
-					jsDebugSelected(psStruct);
-					CurrentStruct = psStruct;
-					break;
-				}
-			}
-		}
-	}
-
-	triggerEventSelected();
-
-	return CurrentStruct;
-}
-
-// Find any structure. Returns NULL if none found.
-//
-STRUCTURE *intFindAStructure()
-{
-	STRUCTURE *Struct;
-
-	// First try and find a factory.
-	Struct = intGotoNextStructureType(REF_FACTORY);
-	if (Struct == nullptr)
-	{
-		// If that fails then look for a command center.
-		Struct = intGotoNextStructureType(REF_HQ);
-		if (Struct == nullptr)
-		{
-			// If that fails then look for a any structure.
-			Struct = intGotoNextStructureType(REF_ANY);
-		}
-	}
-
-	return Struct;
-}
-
-// Look through the players droids and find the next one of type droidType.
-// If Current=NULL then start at the beginning overwise start at Current.
-//
-DROID *intGotoNextDroidType(DROID *CurrDroid, DROID_TYPE droidType, bool AllowGroup)
-{
-	DROID *psDroid;
-	bool Found = false;
-
-	if (selectedPlayer >= MAX_PLAYERS)
-	{
-		return nullptr;
-	}
-
-	if (CurrDroid != nullptr)
-	{
-		CurrentDroid = CurrDroid;
-	}
-
-	if (droidType != CurrentDroidType && droidType != DROID_ANY)
-	{
-		CurrentDroid = nullptr;
-		CurrentDroidType = droidType;
-	}
-
-	if (CurrentDroid != nullptr)
-	{
-		psDroid = CurrentDroid;
-	}
-	else
-	{
-		psDroid = apsDroidLists[selectedPlayer];
-	}
-
-	for (; psDroid != nullptr; psDroid = psDroid->psNext)
-	{
-		if ((psDroid->droidType == droidType
-		     || (droidType == DROID_ANY && !isTransporter(psDroid)))
-		    && (psDroid->group == UBYTE_MAX || AllowGroup))
-		{
-			if (psDroid != CurrentDroid)
-			{
-				clearSelection();
-				SelectDroid(psDroid);
-				CurrentDroid = psDroid;
-				Found = true;
-				break;
-			}
-		}
-	}
-
-	// Start back at the beginning?
-	if ((!Found) && (CurrentDroid != nullptr))
-	{
-		for (psDroid = apsDroidLists[selectedPlayer]; (psDroid != CurrentDroid) && (psDroid != nullptr); psDroid = psDroid->psNext)
-		{
-			if ((psDroid->droidType == droidType ||
-			     ((droidType == DROID_ANY) && !isTransporter(psDroid))) &&
-			    ((psDroid->group == UBYTE_MAX) || AllowGroup))
-			{
-				if (psDroid != CurrentDroid)
-				{
-					clearSelection();
-					SelectDroid(psDroid);
-					CurrentDroid = psDroid;
-					Found = true;
-					break;
-				}
-			}
-		}
-	}
-
-	if (Found == true)
-	{
-		// Center it on screen.
-		if (CurrentDroid)
-		{
-			intSetMapPos(CurrentDroid->pos.x, CurrentDroid->pos.y);
-		}
-		return CurrentDroid;
-	}
-	return nullptr;
-}
-
 // Checks if a coordinate is over the build menu
 bool CoordInBuild(int x, int y)
 {
@@ -2897,52 +3065,16 @@ bool CoordInBuild(int x, int y)
 
 // Our chat dialog for global & team communication
 // \mode sets if global or team communication is wanted
-void chatDialog(int mode)
+void chatDialog(int mode, bool startWithQuickChatFocused)
 {
 	if (!ChatDialogUp)
 	{
-		auto const &parent = psWScreen->psForm;
-		W_CONTEXT sContext = W_CONTEXT::ZeroContext();
-
-		auto consoleBox = std::make_shared<IntFormAnimated>();
-		parent->attach(consoleBox);
-		consoleBox->id = CHAT_CONSOLEBOX;
-		consoleBox->setCalcLayout(LAMBDA_CALCLAYOUT_SIMPLE({
-			psWidget->setGeometry(CHAT_CONSOLEBOXX, CHAT_CONSOLEBOXY, CHAT_CONSOLEBOXW, CHAT_CONSOLEBOXH);
-		}));
-
-		auto chatBox = std::make_shared<W_EDITBOX>();
-		consoleBox->attach(chatBox);
-		chatBox->id = CHAT_EDITBOX;
-		chatBox->setGeometry(80, 2, 320, 16);
-		if (mode == CHAT_GLOB)
-		{
-			chatBox->setBoxColours(WZCOL_MENU_BORDER, WZCOL_MENU_BORDER, WZCOL_MENU_BACKGROUND);
-			widgSetUserData2(psWScreen, CHAT_EDITBOX, CHAT_GLOB);
-		}
-		else
-		{
-			chatBox->setBoxColours(WZCOL_YELLOW, WZCOL_YELLOW, WZCOL_MENU_BACKGROUND);
-			widgSetUserData2(psWScreen, CHAT_EDITBOX, CHAT_TEAM);
-		}
-
-		auto label = std::make_shared<W_LABEL>();
-		consoleBox->attach(label);
-		label->setGeometry(2, 2,60, 16);
-		if (mode == CHAT_GLOB)
-		{
-			label->setFontColour(WZCOL_TEXT_BRIGHT);
-			label->setString(_("Chat: All"));
-		}
-		else
-		{
-			label->setFontColour(WZCOL_YELLOW);
-			label->setString(_("Chat: Team"));
-		}
-		label->setTextAlignment(WLAB_ALIGNTOPLEFT);
 		ChatDialogUp = true;
-		// Auto-click it
-		widgGetFromID(psWScreen, CHAT_EDITBOX)->clicked(&sContext);
+
+		WzChatMode initialChatMode = (mode == CHAT_GLOB) ? WzChatMode::Glob : WzChatMode::Team;
+		createChatScreen([]() {
+			ChatDialogUp = false;
+		}, initialChatMode, startWithQuickChatFocused);
 	}
 	else
 	{
@@ -2964,32 +3096,7 @@ bool isSecondaryWindowUp()
 
 void setSecondaryWindowUp(bool value)
 {
-	secondaryWindowUp = true;
-}
-
-/**
- * Parse what the player types in the chat box.
- *
- * Messages prefixed with "." are interpreted as messages to allies.
- * Messages prefixed with 1 or more digits (0-9) are interpreted as private messages to players.
- *
- * Examples:
- * - ".hi allies" sends "hi allies" to all allies.
- * - "123hi there" sends "hi there" to players 1, 2 and 3.
- * - ".123hi there" sends "hi there" to allies and players 1, 2 and 3.
- **/
-static void parseChatMessageModifiers(InGameChatMessage &message)
-{
-	if (*message.text == '.')
-	{
-		message.toAllies = true;
-		message.text++;
-	}
-
-	for (; *message.text >= '0' && *message.text <= '9'; ++message.text)  // for each 0..9 numeric char encountered
-	{
-		message.addReceiverByPosition(*message.text - '0');
-	}
+	secondaryWindowUp = value;
 }
 
 void intSetShouldShowRedundantDesign(bool value)
@@ -3000,4 +3107,25 @@ void intSetShouldShowRedundantDesign(bool value)
 bool intGetShouldShowRedundantDesign()
 {
 	return includeRedundantDesigns;
+}
+
+void intShowInterface()
+{
+	intAddReticule();
+	intShowPowerBar();
+	intShowGroupSelectionMenu();
+}
+
+void intHideInterface(bool forceHidePowerbar)
+{
+	intRemoveReticule();
+	if (forceHidePowerbar)
+	{
+		forceHidePowerBar();
+	}
+	else
+	{
+		intHidePowerBar();
+	}
+	intHideGroupSelectionMenu();
 }

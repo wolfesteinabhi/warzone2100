@@ -35,7 +35,10 @@
 #include "multiplay.h"
 #include "qtscript.h"
 #include "template.h"
+#include "difficulty.h"
 #include "activity.h"
+#include "multiint.h"
+#include "multiplay.h"
 
 struct CHEAT_ENTRY
 {
@@ -68,9 +71,11 @@ static CHEAT_ENTRY cheatCodes[] =
 	{"john kettley", kf_ToggleWeather},	//john kettley
 	{"mouseflip", kf_ToggleMouseInvert},	//mouseflip
 	{"biffer baker", kf_BifferBaker},	// almost invincible units
-	{"easy", kf_SetEasyLevel},	//easy
-	{"normal", kf_SetNormalLevel},	//normal
-	{"hard", kf_SetHardLevel},	//hard
+	{"supereasy", []{ kf_SetDifficultyLevel(DL_SUPER_EASY); }}, //supereasy
+	{"easy", []{ kf_SetDifficultyLevel(DL_EASY); }}, //easy
+	{"normal", []{ kf_SetDifficultyLevel(DL_NORMAL); }}, //normal
+	{"hard", []{ kf_SetDifficultyLevel(DL_HARD); }}, //hard
+	{"insane", []{ kf_SetDifficultyLevel(DL_INSANE); }}, //insane
 	{"double up", kf_DoubleUp},	// your units take half the damage
 	{"whale fin", kf_TogglePower},	// turns on/off infinte power
 	{"get off my land", kf_KillEnemy},	// kills all enemy units and structures
@@ -113,6 +118,12 @@ bool _attemptCheatCode(const char *cheat_name)
 	if (!strcasecmp("specstats", cheat_name))
 	{
 		kf_ToggleSpecOverlays();
+		return true;
+	}
+
+	if (!strcasecmp("help", cheat_name))
+	{
+		intShowWidgetHelp();
 		return true;
 	}
 
@@ -177,9 +188,9 @@ void sendProcessDebugMappings(bool val)
 	{
 		return;
 	}
-	NETbeginEncode(NETgameQueue(selectedPlayer), GAME_DEBUG_MODE);
-	NETbool(&val);
-	NETend();
+	auto w = NETbeginEncode(NETgameQueue(realSelectedPlayer), GAME_DEBUG_MODE);
+	NETbool(w, val);
+	NETend(w);
 }
 
 #if !defined(__clang__) && defined(__GNUC__) && (12 <= __GNUC__)
@@ -210,9 +221,15 @@ static std::string getWantedDebugMappingStatuses(const DebugInputManager& dbgInp
 void recvProcessDebugMappings(NETQUEUE queue)
 {
 	bool val = false;
-	NETbeginDecode(queue, GAME_DEBUG_MODE);
-	NETbool(&val);
-	NETend();
+	auto r = NETbeginDecode(queue, GAME_DEBUG_MODE);
+	NETbool(r, val);
+	NETend(r);
+
+	if (getLockedOptions().cheats && val)
+	{
+		addConsoleMessage(_("The host has disabled debug mode / cheats for this game."), DEFAULT_JUSTIFY,  SYSTEM_MESSAGE);
+		return;
+	}
 
 	DebugInputManager& dbgInputManager = gInputManager.debugManager();
 	bool oldDebugMode = dbgInputManager.debugMappingsAllowed();

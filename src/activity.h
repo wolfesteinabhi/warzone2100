@@ -114,6 +114,18 @@ public:
 		bool IPv6 = false;
 		unsigned int ipv4_port;
 		unsigned int ipv6_port;
+		enum class IPType
+		{
+			IPv4,
+			IPv6
+		};
+		struct KnownExternalAddress
+		{
+			std::string ipAddress;
+			unsigned int port;
+			IPType type;
+		};
+		std::vector<KnownExternalAddress> knownExternalAddresses;
 	};
 	struct MultiplayerGameInfo : public SkirmishGameInfo {
 		// host information
@@ -156,6 +168,7 @@ public:
 	static std::string getTeamDescription(const ActivitySink::SkirmishGameInfo& info);
 };
 
+std::string to_string(const ActivitySink::GameMode& mode);
 std::string to_string(const ActivitySink::GameEndReason& reason);
 std::string to_string(const END_GAME_STATS_DATA& stats);
 
@@ -166,6 +179,14 @@ public:
 	virtual ~ActivityDBProtocol();
 public:
 	virtual std::string getFirstLaunchDate() const = 0;
+
+	struct GuideTopicPrefs
+	{
+		optional<std::string> lastReadVersion;
+		bool bookmarked = false;
+	};
+	virtual optional<GuideTopicPrefs> getGuideTopicPrefs(const std::string& topicIdentifier) const = 0;
+	virtual bool setGuideTopicPrefs(const std::string& topicIdentifier, const GuideTopicPrefs& prefs) = 0;
 };
 
 // ActivityManager accepts numerous event callbacks from the core game and synthesizes
@@ -201,14 +222,14 @@ public:
 	// lobbyGameId is 0 if the lobby can't be contacted / the game is not registered with the lobby
 	void hostGame(const char *SessionName, const char *PlayerName, const char* lobbyAddress, unsigned int lobbyPort, const ActivitySink::ListeningInterfaces& listeningInterfaces, uint32_t lobbyGameId = 0);
 	void hostGameLobbyServerDisconnect();
-	void hostLobbyQuit();
+	void hostLobbyQuit(LOBBY_ERROR_TYPES errorResult);
 	// called when attempting to join a lobby game
 	void willAttemptToJoinLobbyGame(const std::string& lobbyAddress, unsigned int lobbyPort, uint32_t lobbyGameId, const std::vector<JoinConnectionDescription>& connections);
 	// called when an attempt to join fails
 	void joinGameFailed(const std::vector<JoinConnectionDescription>& connection_list);
 	// called when joining a multiplayer game
 	void joinGameSucceeded(const char *host, uint32_t port);
-	void joinedLobbyQuit();
+	void joinedLobbyQuit(LOBBY_ERROR_TYPES errorResult);
 	// for skirmish / multiplayer, provide additional data / state
 	void updateMultiplayGameData(const MULTIPLAYERGAME& game, const MULTIPLAYERINGAME& ingame, optional<bool> privateGame);
 	// called on the host when the host kicks a player

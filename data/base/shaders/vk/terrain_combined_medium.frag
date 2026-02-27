@@ -3,6 +3,9 @@
 #include "terrain_combined.glsl"
 
 layout (constant_id = 0) const float WZ_MIP_LOAD_BIAS = 0.f;
+layout (constant_id = 1) const uint WZ_SHADOW_MODE = 1;
+layout (constant_id = 2) const uint WZ_SHADOW_FILTER_SIZE = 5;
+layout (constant_id = 3) const uint WZ_SHADOW_CASCADES_COUNT = 3;
 
 layout(set = 1, binding = 0) uniform sampler2D lightmap_tex;
 
@@ -18,10 +21,16 @@ layout(set = 1, binding = 6) uniform sampler2DArray decalNormal;
 layout(set = 1, binding = 7) uniform sampler2DArray decalSpecular;
 layout(set = 1, binding = 8) uniform sampler2DArray decalHeight;
 
+// depth map
+layout(set = 1, binding = 9) uniform sampler2DArrayShadow shadowMap;
+
 layout(location = 0) in FragData frag;
-layout(location = 9) flat in FragFlatData fragf;
+layout(location = 10) flat in FragFlatData fragf;
 
 layout(location = 0) out vec4 FragColor;
+
+#include "shadow_mapping.glsl"
+#include "light.glsl"
 
 vec3 getGroundUv(int i) {
 	uint groundNo = fragf.grounds[i];
@@ -42,9 +51,12 @@ vec4 main_medium() {
 
 	vec3 L = normalize(frag.groundLightDir);
 	vec3 N = vec3(0.f,0.f,1.f);
-	float lambertTerm = max(dot(N, L), 0.0); // diffuse lighting
+	float diffuseFactor = lambertTerm(N, L); // diffuse lighting
+
+	float visibility = getShadowVisibility(frag.posModelSpace, frag.posViewSpace, diffuseFactor, 0.001f);
+
 	vec4 lightmap_vec4 = texture(lightmap_tex, frag.uvLightmap);
-	vec4 light = (diffuseLight*0.75*lambertTerm + ambientLight*0.25) * lightmap_vec4.a; // ... * tile brightness / ambient occlusion (stored in lightmap.a)
+	vec4 light = (visibility*diffuseLight*0.8*(diffuseFactor*diffuseFactor) + ambientLight*0.2) * lightmap_vec4.a; // ... * tile brightness / ambient occlusion (stored in lightmap.a)
 	light.rgb = blendAddEffectLighting(light.rgb, (lightmap_vec4.rgb / 1.5f)); // additive color (from environmental point lights / effects)
 	light.a = 1.f;
 
@@ -58,11 +70,8 @@ void main()
 	if (fogEnabled > 0)
 	{
 		// Calculate linear fog
-		float fogFactor = (fogEnd - frag.vertexDistance) / (fogEnd - fogStart);
-		fogFactor = clamp(fogFactor, 0.0, 1.0);
-
-		// Return fragment color
-		fragColor = mix(fragColor, vec4(fogColor.xyz, fragColor.w), fogFactor);
+		float fogFactor = (fogEnd - length(frag.posViewSpace)) / (fogEnd - fogStart);
+		fragColor = mix(fragColor, vec4(fogColor.rgb, fragColor.a), clamp(fogFactor, 0.0, 1.0));
 	}
 	FragColor = fragColor;
 }

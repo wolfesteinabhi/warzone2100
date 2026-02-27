@@ -1,5 +1,4 @@
-cmake_minimum_required(VERSION 3.3)
-cmake_policy(SET CMP0054 NEW)
+cmake_minimum_required(VERSION 3.16...3.31)
 
 # [Autorevision.cmake]
 #
@@ -9,7 +8,7 @@ cmake_policy(SET CMP0054 NEW)
 # COPYING.md for licence terms.
 #
 # autorevision.CMake:
-# Copyright © 2018-2021 pastdue ( https://github.com/past-due/ ) and contributors
+# Copyright © 2018-2023 pastdue ( https://github.com/past-due/ ) and contributors
 # License: MIT License ( https://opensource.org/licenses/MIT )
 #
 #

@@ -1,18 +1,49 @@
 include("script/campaign/libcampaign.js");
 include("script/campaign/templates.js");
 
-const PLAYER_RES = [
+const GUIDE_STRUCT_BUILT_DELAY_TIME = 100;
+const mis_playerRes = [
 	"R-Wpn-MG1Mk1", "R-Vehicle-Body01", "R-Sys-Spade1Mk1", "R-Vehicle-Prop-Wheels",
 ];
 
-const SCAVENGER_RES = [
+const mis_scavengerRes = [
 	"R-Wpn-MG-Damage01", "R-Wpn-MG-ROF01", "R-Wpn-Flamer-Range01-ScavReduce",
 ];
+
+// CLASSIC: No research.
+
+// Handlers for guide topics
+
+function cam1A_doAddHQBuiltTopics()
+{
+	addGuideTopic("wz2100::structures::factory");
+	addGuideTopic("wz2100::units::designing", SHOWTOPIC_FIRSTADD);
+}
+
+function cam1A_doAddFactoryBuiltTopics()
+{
+	addGuideTopic("wz2100::units::designing");
+	addGuideTopic("wz2100::structures::rallypoint");
+	addGuideTopic("wz2100::structures::factory");
+	addGuideTopic("wz2100::units::building", SHOWTOPIC_FIRSTADD);
+}
+
+function cam1A_doAddResearchFacilityBuiltTopics()
+{
+	addGuideTopic("wz2100::structures::researchfacility", SHOWTOPIC_FIRSTADD);
+}
+
+function cam1A_doAddOilDerrickBuiltTopics()
+{
+	addGuideTopic("wz2100::general::power");
+	addGuideTopic("wz2100::structures::oilderrick");
+	addGuideTopic("wz2100::structures::powergenerator", SHOWTOPIC_FIRSTADD);
+}
 
 // Player zero's droid enters area next to first oil patch.
 camAreaEvent("launchScavAttack", function(droid)
 {
-	camPlayVideos(["pcv456.ogg", {video: "MB1A_MSG", type: MISS_MSG}]);
+	camPlayVideos([cam_sounds.incoming.incomingIntelligenceReport, {video: "MB1A_MSG", type: MISS_MSG}]);
 	hackAddMessage("C1A_OBJ1", PROX_MSG, CAM_HUMAN_PLAYER, false);
 	// Send scavengers on war path if triggered above.
 	camManageGroup(camMakeGroup("scavAttack1", ENEMIES), CAM_ORDER_ATTACK, {
@@ -21,16 +52,16 @@ camAreaEvent("launchScavAttack", function(droid)
 		morale: 50
 	});
 	// Activate mission timer, unlike the original campaign.
-	if (difficulty !== HARD && difficulty !== INSANE)
+	if (!tweakOptions.classicTimers && difficulty <= MEDIUM)
 	{
-		setMissionTime(camChangeOnDiff(camHoursToSeconds(1)));
+		camSetMissionTimer(camChangeOnDiff(camHoursToSeconds(1)));
 	}
 });
 
 function runAway()
 {
-	var oilPatch = getObject("oilPatch");
-	var droids = enumRange(oilPatch.x, oilPatch.y, 7, SCAV_7, false);
+	const oilPatch = getObject("oilPatch");
+	const droids = enumRange(oilPatch.x, oilPatch.y, 7, CAM_SCAV_7, false);
 	camManageGroup(camMakeGroup(droids), CAM_ORDER_ATTACK, {
 		pos: camMakePos("scavAttack1"),
 		fallback: camMakePos("retreat1"),
@@ -64,6 +95,11 @@ camAreaEvent("roadblockArea", function(droid)
 // Scavengers hiding in the split canyon area between base two and three.
 function raidAttack()
 {
+	if (!camClassicMode())
+	{
+		camCompleteRequiredResearch(mis_scavengerRes, CAM_SCAV_6);
+		camCompleteRequiredResearch(mis_scavengerRes, CAM_SCAV_7);
+	}
 	camManageGroup(camMakeGroup("raidTrigger", ENEMIES), CAM_ORDER_ATTACK, {
 		pos: camMakePos("scavBase3Cleanup")
 	});
@@ -83,20 +119,39 @@ camAreaEvent("raidTrigger", function(droid)
 });
 
 // Or, they built on base two's oil patch instead. Initiate a surprise attack.
+// (Also handles queuing guide topics for structures built)
 function eventStructureBuilt(structure, droid)
 {
-	if (structure.player === CAM_HUMAN_PLAYER && structure.stattype === RESOURCE_EXTRACTOR)
+	if (structure.player === CAM_HUMAN_PLAYER)
 	{
-		// Is it in the base two area?
-		var objs = enumArea("scavBase2Cleanup", CAM_HUMAN_PLAYER);
-		for (let i = 0, l = objs.length; i < l; ++i)
+		if (structure.stattype === FACTORY)
 		{
-			var obj = objs[i];
-			if (obj.type === STRUCTURE && obj.stattype === RESOURCE_EXTRACTOR)
+			queue("cam1A_doAddFactoryBuiltTopics", GUIDE_STRUCT_BUILT_DELAY_TIME);
+		}
+		else if (structure.stattype === RESEARCH_LAB)
+		{
+			queue("cam1A_doAddResearchFacilityBuiltTopics", GUIDE_STRUCT_BUILT_DELAY_TIME);
+		}
+		else if (structure.stattype === RESOURCE_EXTRACTOR)
+		{
+			// Is it in the base two area?
+			const objs = enumArea("scavBase2Cleanup", CAM_HUMAN_PLAYER);
+			for (let i = 0, l = objs.length; i < l; ++i)
 			{
-				camCallOnce("raidAttack");
-				break;
+				const obj = objs[i];
+				if (obj.type === STRUCTURE && obj.stattype === RESOURCE_EXTRACTOR)
+				{
+					camCallOnce("raidAttack");
+					break;
+				}
 			}
+
+			// Add the oil derrick topic
+			queue("cam1A_doAddOilDerrickBuiltTopics", GUIDE_STRUCT_BUILT_DELAY_TIME);
+		}
+		else if (structure.stattype === HQ)
+		{
+			queue("cam1A_doAddHQBuiltTopics", GUIDE_STRUCT_BUILT_DELAY_TIME);
 		}
 	}
 }
@@ -118,98 +173,98 @@ function camEnemyBaseEliminated_scavGroup2()
 
 function enableBaseStructures()
 {
-	const STRUCTS = [
-		"A0CommandCentre", "A0PowerGenerator", "A0ResourceExtractor",
-		"A0ResearchFacility", "A0LightFactory",
+	const structs = [
+		cam_base_structures.commandCenter, cam_base_structures.powerGenerator,
+		cam_base_structures.derrick, cam_base_structures.researchLab,
+		cam_base_structures.factory,
 	];
 
-	for (let i = 0; i < STRUCTS.length; ++i)
+	for (let i = 0; i < structs.length; ++i)
 	{
-		enableStructure(STRUCTS[i], CAM_HUMAN_PLAYER);
+		enableStructure(structs[i], CAM_HUMAN_PLAYER);
 	}
+}
+
+function cam1A_doNeedPowerTopics()
+{
+	// inform the user about power (and the need to build an oil derrick)
+	addGuideTopic("wz2100::structures::oilderrick");
+	addGuideTopic("wz2100::general::power", SHOWTOPIC_FIRSTADD);
+}
+
+function eventDroidBuilt(droid, structure)
+{
+	if (!camDef(structure)) // "clone wars" cheat
+	{
+		return;
+	}
+	if (droid.player === CAM_HUMAN_PLAYER)
+	{
+		// inform the user about power (and the need to build an oil derrick)
+		camCallOnce("cam1A_doNeedPowerTopics");
+	}
+}
+
+function doAddHQGuideTopic()
+{
+	addGuideTopic("wz2100::structures::hq", SHOWTOPIC_FIRSTADD);
 }
 
 function eventStartLevel()
 {
 	const PLAYER_POWER = 1300;
-	var startpos = getObject("startPosition");
-	var lz = getObject("landingZone");
+	const startPos = getObject("startPosition");
+	const lz = getObject("landingZone");
 
-	camSetStandardWinLossConditions(CAM_VICTORY_STANDARD, "CAM_1B");
+	camSetStandardWinLossConditions(CAM_VICTORY_STANDARD, cam_levels.alpha2);
 
-	centreView(startpos.x, startpos.y);
+	centreView(startPos.x, startPos.y);
 	setNoGoArea(lz.x, lz.y, lz.x2, lz.y2, CAM_HUMAN_PLAYER);
 
-	if (difficulty === HARD)
-	{
-		setPower(600, CAM_HUMAN_PLAYER);
-	}
-	else if (difficulty === INSANE)
-	{
-		setPower(300, CAM_HUMAN_PLAYER);
-	}
-	else
-	{
-		setPower(PLAYER_POWER, CAM_HUMAN_PLAYER);
-	}
-
-	setAlliance(SCAV_6, SCAV_7, true);
+	setAlliance(CAM_SCAV_6, CAM_SCAV_7, true);
 
 	enableBaseStructures();
-	camCompleteRequiredResearch(PLAYER_RES, CAM_HUMAN_PLAYER);
-	camCompleteRequiredResearch(SCAVENGER_RES, 6);
-	camCompleteRequiredResearch(SCAVENGER_RES, 7);
-	if (difficulty === INSANE)
-	{
-		completeResearch("R-Wpn-Flamer-Range01-ScavReduce-Undo", SCAV_6);
-		completeResearch("R-Wpn-Flamer-Range01-ScavReduce-Undo", SCAV_7);
-	}
+	camCompleteRequiredResearch(mis_playerRes, CAM_HUMAN_PLAYER);
 
-	// Give player briefing.
-	camPlayVideos({video: "CMB1_MSG", type: CAMP_MSG, immediate: false});
-	if (difficulty === HARD)
+	if (camClassicMode())
 	{
-		setMissionTime(camMinutesToSeconds(40));
-	}
-	else if (difficulty === INSANE)
-	{
-		setMissionTime(camMinutesToSeconds(30));
+		setPower(PLAYER_POWER, CAM_HUMAN_PLAYER);
+
+		camSetArtifacts({
+			"base1ArtifactPos": { tech: "R-Wpn-MG-Damage01" },
+			"base2Factory": { tech: "R-Wpn-Flamer01Mk1" },
+			"base3Factory": { tech: "R-Defense-Tower01" },
+			"base4Factory": { tech: "R-Sys-Engineering01" },
+		});
 	}
 	else
 	{
-		setMissionTime(-1); // will start mission timer later
-	}
+		if (difficulty === HARD)
+		{
+			setPower(600, CAM_HUMAN_PLAYER);
+		}
+		else if (difficulty >= INSANE)
+		{
+			setPower(300, CAM_HUMAN_PLAYER);
+		}
+		else
+		{
+			setPower(PLAYER_POWER, CAM_HUMAN_PLAYER);
+		}
 
-	// Feed libcampaign.js with data to do the rest.
-	camSetEnemyBases({
-		"scavGroup1": {
-			cleanup: "scavBase1Cleanup",
-			detectMsg: "C1A_BASE0",
-			detectSnd: "pcv375.ogg",
-			eliminateSnd: "pcv391.ogg"
-		},
-		"scavGroup2": {
-			cleanup: "scavBase2Cleanup",
-			detectMsg: "C1A_BASE1",
-			detectSnd: "pcv374.ogg",
-			eliminateSnd: "pcv392.ogg"
-		},
-		"scavGroup3": {
-			cleanup: "scavBase3Cleanup",
-			detectMsg: "C1A_BASE2",
-			detectSnd: "pcv374.ogg",
-			eliminateSnd: "pcv392.ogg"
-		},
-		"scavGroup4": {
-			cleanup: "scavBase4Cleanup",
-			detectMsg: "C1A_BASE3",
-			detectSnd: "pcv374.ogg",
-			eliminateSnd: "pcv392.ogg"
-		},
-	});
+		completeResearch("R-Wpn-Flamer-Range01-ScavReduce", CAM_SCAV_6);
+		completeResearch("R-Wpn-Flamer-Range01-ScavReduce", CAM_SCAV_7);
+		if (difficulty >= HARD)
+		{
+			camCompleteRequiredResearch(mis_scavengerRes, CAM_SCAV_6);
+			camCompleteRequiredResearch(mis_scavengerRes, CAM_SCAV_7);
+		}
+		if (difficulty >= INSANE)
+		{
+			completeResearch("R-Wpn-Flamer-Range01-ScavReduce-Undo", CAM_SCAV_6);
+			completeResearch("R-Wpn-Flamer-Range01-ScavReduce-Undo", CAM_SCAV_7);
+		}
 
-	if (difficulty >= HARD)
-	{
 		camSetArtifacts({
 			"base1ArtifactPos": { tech: ["R-Wpn-MG-Damage01", "R-Sys-Engineering01"] },
 			"base2Factory": { tech: ["R-Wpn-Flamer01Mk1", "R-Sys-MobileRepairTurret01"] },
@@ -217,15 +272,57 @@ function eventStartLevel()
 			"base4Factory": { tech: "R-Wpn-MG-ROF01" },
 		});
 	}
+
+	// Give player briefing.
+	camPlayVideos({video: "CMB1_MSG", type: CAMP_MSG, immediate: false});
+
+	if (tweakOptions.classicTimers)
+	{
+		camSetMissionTimer(-1);
+	}
 	else
 	{
-		camSetArtifacts({
-			"base1ArtifactPos": { tech: ["R-Wpn-MG-Damage01", "R-Sys-Engineering01"] },
-			"base2Factory": { tech: "R-Wpn-Flamer01Mk1" },
-			"base3Factory": { tech: ["R-Wpn-MG-Damage02", "R-Sys-MobileRepairTurret01"] },
-			"base4Factory": { tech: "R-Wpn-MG-ROF01" },
-		});
+		if (difficulty === HARD)
+		{
+			camSetMissionTimer(camMinutesToSeconds(40));
+		}
+		else if (difficulty >= INSANE)
+		{
+			camSetMissionTimer(camMinutesToSeconds(30));
+		}
+		else
+		{
+			camSetMissionTimer(-1); // will start mission timer later
+		}
 	}
+
+	// Feed libcampaign.js with data to do the rest.
+	camSetEnemyBases({
+		"scavGroup1": {
+			cleanup: "scavBase1Cleanup",
+			detectMsg: "C1A_BASE0",
+			detectSnd: cam_sounds.baseDetection.scavengerOutpostDetected,
+			eliminateSnd: cam_sounds.baseElimination.scavengerOutpostEradicated
+		},
+		"scavGroup2": {
+			cleanup: "scavBase2Cleanup",
+			detectMsg: "C1A_BASE1",
+			detectSnd: cam_sounds.baseDetection.scavengerBaseDetected,
+			eliminateSnd: cam_sounds.baseElimination.scavengerBaseEradicated
+		},
+		"scavGroup3": {
+			cleanup: "scavBase3Cleanup",
+			detectMsg: "C1A_BASE2",
+			detectSnd: cam_sounds.baseDetection.scavengerBaseDetected,
+			eliminateSnd: cam_sounds.baseElimination.scavengerBaseEradicated
+		},
+		"scavGroup4": {
+			cleanup: "scavBase4Cleanup",
+			detectMsg: "C1A_BASE3",
+			detectSnd: cam_sounds.baseDetection.scavengerBaseDetected,
+			eliminateSnd: cam_sounds.baseElimination.scavengerBaseEradicated
+		},
+	});
 
 	camSetFactories({
 		"base2Factory": {
@@ -256,4 +353,6 @@ function eventStartLevel()
 			templates: [ cTempl.bjeep, cTempl.bloke, cTempl.trike, cTempl.bloke ]
 		},
 	});
+
+	queue("doAddHQGuideTopic", camSecondsToMilliseconds(3));
 }

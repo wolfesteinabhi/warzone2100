@@ -1,3 +1,22 @@
+/*
+	This file is part of Warzone 2100.
+	Copyright (C) 2021-2023  Warzone 2100 Project
+
+	Warzone 2100 is free software; you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation; either version 2 of the License, or
+	(at your option) any later version.
+
+	Warzone 2100 is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with Warzone 2100; if not, write to the Free Software
+	Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
+*/
+
 #include "lib/ivis_opengl/bitimage.h"
 #include "lib/sound/audio_id.h"
 #include "lib/sound/audio.h"
@@ -10,7 +29,6 @@
 #include "../mission.h"
 
 STRUCTURE *ResearchController::highlightedFacility = nullptr;
-static ImdObject getResearchObjectImage(RESEARCH *research);
 
 void ResearchController::updateData()
 {
@@ -23,11 +41,15 @@ void ResearchController::updateFacilitiesList()
 {
 	facilities.clear();
 
-	for (auto psStruct = interfaceStructList(); psStruct != nullptr; psStruct = psStruct->psNext)
+	auto* intStrList = interfaceStructList();
+	if (intStrList)
 	{
-		if (psStruct->pStructureType->type == REF_RESEARCH && psStruct->status == SS_BUILT && psStruct->died == 0)
+		for (auto psStruct : *intStrList)
 		{
-			facilities.push_back(psStruct);
+			if (psStruct->pStructureType->type == REF_RESEARCH && psStruct->status == SS_BUILT && psStruct->died == 0)
+			{
+				facilities.push_back(psStruct);
+			}
 		}
 	}
 
@@ -111,7 +133,7 @@ void ResearchController::refresh()
 void ResearchController::clearData()
 {
 	facilities.clear();
-	setHighlightedObject(nullptr);
+	setHighlightedObject(nullptr, false);
 	stats.clear();
 }
 
@@ -137,33 +159,15 @@ void ResearchController::startResearch(RESEARCH &research)
 		cancelResearch(psLab); //Clear it out of this lab as we are now researching it in another.
 	}
 
-	if (bMultiMessages)
-	{
-		// Say that we want to do research [sic].
-		sendResearchStatus(facility, research.ref - STAT_RESEARCH, selectedPlayer, true);
-		setStatusPendingStart(*psResFacilty, &research);  // Tell UI that we are going to research.
-	}
-	else
-	{
-		//set up the player_research
-		auto count = research.ref - STAT_RESEARCH;
-		//meant to still be in the list but greyed out
-		auto pPlayerRes = &asPlayerResList[selectedPlayer][count];
-
-		//set the subject up
-		psResFacilty->psSubject = &research;
-
-		sendResearchStatus(facility, count, selectedPlayer, true);	// inform others, I'm researching this.
-
-		MakeResearchStarted(pPlayerRes);
-		psResFacilty->timeStartHold = 0;
-	}
+	// Say that we want to do research [sic].
+	sendResearchStatus(facility, research.ref - STAT_RESEARCH, selectedPlayer, true);
+	setStatusPendingStart(*psResFacilty, &research);  // Tell UI that we are going to research.
 
 	//stop the button from flashing once a topic has been chosen
 	stopReticuleButtonFlash(IDRET_RESEARCH);
 }
 
-void ResearchController::setHighlightedObject(BASE_OBJECT *object)
+void ResearchController::setHighlightedObject(BASE_OBJECT *object, bool jumpToHighlightedStatsObject)
 {
 	if (object == nullptr)
 	{
@@ -174,6 +178,7 @@ void ResearchController::setHighlightedObject(BASE_OBJECT *object)
 	auto facility = castStructure(object);
 	ASSERT_NOT_NULLPTR_OR_RETURN(, facility);
 	ASSERT_OR_RETURN(, facility->pStructureType->type == REF_RESEARCH, "Invalid facility pointer");
+	queuedJumpToHighlightedStatsObject = queuedJumpToHighlightedStatsObject || jumpToHighlightedStatsObject;
 	highlightedFacility = facility;
 }
 
@@ -275,7 +280,7 @@ protected:
 	void clickPrimary() override
 	{
 		controller->clearStructureSelection();
-		controller->selectObject(controller->getObjectAt(objectIndex));
+		controller->selectObject(controller->getObjectAt(objectIndex), false);
 		jump();
 		BaseStatsController::scheduleDisplayStatsForm(controller);
 	}
@@ -329,7 +334,7 @@ protected:
 	{
 		auto facility = controller->getObjectAt(objectIndex);
 		ASSERT_NOT_NULLPTR_OR_RETURN("", facility);
-		return getStatsName(facility->pStructureType);
+		return getLocalizedStatsName(facility->pStructureType);
 	}
 
 	ResearchController &getController() const override
@@ -446,18 +451,18 @@ private:
 		//might need to cancel the hold on research facility
 		releaseResearch(facility, ModeQueue);
 		controller->clearStructureSelection();
-		controller->selectObject(facility);
+		controller->selectObject(facility, true);
 		BaseStatsController::scheduleDisplayStatsForm(controller);
 		controller->refresh();
 	}
 
-	void clickSecondary() override
+	void clickSecondary(bool synthesizedFromHold) override
 	{
 		auto facility = controller->getObjectAt(objectIndex);
 		ASSERT_NOT_NULLPTR_OR_RETURN(, facility);
 		controller->clearStructureSelection();
 		controller->requestResearchCancellation(facility);
-		controller->setHighlightedObject(facility);
+		controller->setHighlightedObject(facility, true);
 		BaseStatsController::scheduleDisplayStatsForm(controller);
 		controller->refresh();
 	}
@@ -597,6 +602,42 @@ private:
 		});
 	}
 
+	std::string getTip() override
+	{
+		WzString costString = WzString::format(_("Cost: %u"), getCost());
+		auto stats = getStats();
+		WzString tipString = (stats == nullptr) ? "" : getLocalizedStatsName(stats);
+		if (stats && !stats->category.isEmpty())
+		{
+			tipString.append(astringf("\n(%s %u/%u)", stats->category.toUtf8().c_str(), static_cast<unsigned>(stats->categoryProgress), static_cast<unsigned>(stats->categoryMax)).c_str());
+		}
+		tipString.append("\n");
+		tipString.append(costString);
+
+		auto facility = controller->getHighlightedObject();
+		if (stats && facility && selectedPlayer < MAX_PLAYERS)
+		{
+			auto& playerResList = asPlayerResList[selectedPlayer];
+			if (stats->index < playerResList.size())
+			{
+				uint32_t currentPoints = playerResList[stats->index].currentPoints;
+				uint32_t totalPoints = stats->researchPoints;
+				int researchRate = getBuildingResearchPoints(facility);
+				if (researchRate > 0)
+				{
+					uint32_t timeToBuild = (totalPoints - currentPoints) / static_cast<uint32_t>(researchRate);
+					char timeText[20];
+					ssprintf(timeText, "%u:%02u", timeToBuild / 60, timeToBuild % 60);
+					tipString.append(" (");
+					tipString.append(timeText);
+					tipString.append(")");
+				}
+			}
+		}
+
+		return tipString.toUtf8();
+	}
+
 	std::shared_ptr<ResearchController> controller;
 	size_t researchOptionIndex;
 	AllyResearchsIcons allyResearchIcons;
@@ -711,7 +752,7 @@ void ResearchController::requestResearchCancellation(STRUCTURE *facility)
 	audio_PlayTrack(ID_SOUND_WINDOWCLOSE);
 }
 
-static ImdObject getResearchObjectImage(RESEARCH *research)
+ImdObject getResearchObjectImage(RESEARCH *research)
 {
 	BASE_STATS *psResGraphic = research->psStat;
 

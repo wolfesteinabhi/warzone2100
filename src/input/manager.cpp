@@ -27,14 +27,11 @@
 
 #include "manager.h"
 #include "context.h"
-#include "config.h"
 #include "mapping.h"
 
 #include "../keybind.h"
-#include "../keyedit.h"
 #include "../display3d.h"   // For playerPos
-#include "../qtscript.h"    // For triggerEventKeyPressed
-#include "../main.h"        // For KeyMapPath
+#include "lib/netplay/nettypes.h"	// For NETisReplay()
 
 
 KeyMappings& InputManager::mappings()
@@ -67,6 +64,15 @@ void InputManager::shutdown()
 	keyMappings.clear();
 }
 
+void InputManager::setKeyMapJsonPath(const std::string& path)
+{
+	if (path == currentKeyMapJsonPath)
+	{
+		return;
+	}
+	currentKeyMapJsonPath = path;
+}
+
 bool InputManager::mappingsSortRequired() const
 {
 	return bMappingsSortOrderDirty || contextManager.isDirty() || keyMappings.isDirty();
@@ -87,7 +93,7 @@ void InputManager::resetMappings(bool bForceDefaults, const KeyFunctionConfigura
 	// load the mappings.
 	if (!bForceDefaults)
 	{
-		if (keyMappings.load(KeyMapPath, keyFuncConfig))
+		if (keyMappings.load(currentKeyMapJsonPath.c_str(), keyFuncConfig))
 		{
 			debug(LOG_WZ, "Loaded key map successfully");
 		}
@@ -113,7 +119,13 @@ void InputManager::resetMappings(bool bForceDefaults, const KeyFunctionConfigura
 		}
 	}
 
-	keyMappings.save(KeyMapPath);
+	keyMappings.save(currentKeyMapJsonPath.c_str());
+}
+
+void InputManager::saveMappings()
+{
+	debug(LOG_WZ, "Saving: %s", currentKeyMapJsonPath.c_str());
+	keyMappings.save(currentKeyMapJsonPath.c_str());
 }
 
 bool InputManager::addDefaultMapping(const KEY_CODE metaCode, const KeyMappingInput input, const KeyAction action, const KeyFunctionInfo& info, const KeyMappingSlot slot)
@@ -230,9 +242,9 @@ void InputManager::updateMapMarkers()
 
 // ----------------------------------------------------------------------------------
 /* allows checking if mapping should currently be ignored in processMappings */
-static bool isIgnoredMapping(InputManager& inputManager, const bool bAllowMouseWheelEvents, const KeyMapping& mapping)
+static bool isIgnoredMapping(InputManager& inputManager, const bool bAllowMouseWheelEvents, const KeyMapping& mapping, bool bypassActiveContextCheck = false)
 {
-	if (!inputManager.contexts().isActive(mapping.info.context))
+	if (!bypassActiveContextCheck && !inputManager.contexts().isActive(mapping.info.context))
 	{
 		return true;
 	}
@@ -300,66 +312,37 @@ void InputManager::processMappings(const bool bAllowMouseWheelEvents)
 			consumedInputs.insert(keyToProcess.keys.input);
 		}
 	}
+}
 
-	/* Script callback - find out what meta key was pressed */
-	int pressedMetaKey = KEY_IGNORE;
-
-	/* getLastMetaKey() can't be used here, have to do manually */
-	if (keyDown(KEY_LCTRL))
+nonstd::optional<std::reference_wrapper<const KeyMapping>> InputManager::findCurrentMapping(const bool bAllowMouseWheelEvents, bool filterHidden)
+{
+	/* If mappings have been updated or context priorities have changed, sort the mappings by priority and whether or not they have meta keys */
+	if (mappingsSortRequired())
 	{
-		pressedMetaKey = KEY_LCTRL;
-	}
-	else if (keyDown(KEY_RCTRL))
-	{
-		pressedMetaKey = KEY_RCTRL;
-	}
-	else if (keyDown(KEY_LALT))
-	{
-		pressedMetaKey = KEY_LALT;
-	}
-	else if (keyDown(KEY_RALT))
-	{
-		pressedMetaKey = KEY_RALT;
-	}
-	else if (keyDown(KEY_LSHIFT))
-	{
-		pressedMetaKey = KEY_LSHIFT;
-	}
-	else if (keyDown(KEY_RSHIFT))
-	{
-		pressedMetaKey = KEY_RSHIFT;
-	}
-	else if (keyDown(KEY_LMETA))
-	{
-		pressedMetaKey = KEY_LMETA;
-	}
-	else if (keyDown(KEY_RMETA))
-	{
-		pressedMetaKey = KEY_RMETA;
+		keyMappings.sort(contextManager);
+		contextManager.clearDirty();
+		bMappingsSortOrderDirty = false;
 	}
 
-	/* Find out what keys were pressed */
-	for (int i = 0; i < KEY_MAXSCAN; i++)
+	/* Run through all sorted mappings */
+	for (const KeyMapping& keyToProcess : keyMappings)
 	{
-		/* Skip meta keys */
-		switch (i)
+		/* Skip inappropriate ones when necessary */
+		if (isIgnoredMapping(*this, bAllowMouseWheelEvents, keyToProcess, true))
 		{
-		case KEY_LCTRL:
-		case KEY_RCTRL:
-		case KEY_LALT:
-		case KEY_RALT:
-		case KEY_LSHIFT:
-		case KEY_RSHIFT:
-		case KEY_LMETA:
-		case KEY_RMETA:
 			continue;
-			break;
+		}
+		if (filterHidden && keyToProcess.info.type == KeyMappingType::HIDDEN)
+		{
+			continue;
 		}
 
-		/* Let scripts process this key if it's pressed */
-		if (keyPressed((KEY_CODE)i))
+		/* Execute the action if mapping was hit */
+		if (keyToProcess.isActivated())
 		{
-			triggerEventKeyPressed(pressedMetaKey, i);
+			return keyToProcess;
 		}
 	}
+
+	return nullopt;
 }

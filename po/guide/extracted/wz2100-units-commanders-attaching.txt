@@ -1,0 +1,7 @@
+// TRANSLATORS:
+// The guide topic title - please maintain original capitalization
+_("Attaching Units")
+_("To attach units to a Commander, select the unit(s), then left-click the Commander you want to attach them to. A symbol will appear next to the assigned unit(s) to signify the attachment.")
+_("## Limits:")
+_("Commanders have a limit to the amount of units they can control, which is affected by their rank. Promotions are earned by the Commander reaching a dedicated amount of experience points.")
+_("After each promotion, the Commander is able to control 2 more units.")

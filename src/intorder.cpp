@@ -410,7 +410,7 @@ static bool BuildSelectedDroidList()
 		return false;
 	}
 
-	for (DROID *psDroid = apsDroidLists[selectedPlayer]; psDroid; psDroid = psDroid->psNext)
+	for (DROID *psDroid : apsDroidLists[selectedPlayer])
 	{
 		if (psDroid->selected)
 		{
@@ -450,7 +450,7 @@ static std::vector<AVORDER> buildDroidOrderList()
 // Build a list of orders available for the selected structure.
 static std::vector<AVORDER> buildStructureOrderList(STRUCTURE *psStructure)
 {
-	ASSERT_OR_RETURN(std::vector<AVORDER>(), StructIsFactory(psStructure), "BuildStructureOrderList: structure is not a factory");
+	ASSERT_OR_RETURN(std::vector<AVORDER>(), psStructure && psStructure->isFactory(), "BuildStructureOrderList: structure is not a factory");
 
 	//this can be hard-coded!
 	std::vector<AVORDER> orders(4);
@@ -509,6 +509,30 @@ static UDWORD GetImageHeight(IMAGEFILE *ImageFile, UDWORD ImageID)
 	return iV_GetImageHeight(ImageFile, (UWORD)ImageID);
 }
 
+std::vector<UWORD> intOrderGetButtonImageIDs(SECONDARY_ORDER secondaryOrder)
+{
+	size_t i = 0;
+	for (; i < NUM_ORDERS; ++i)
+	{
+		if (OrderButtons[i].Order == secondaryOrder)
+		{
+			// found it
+			break;
+		}
+	}
+	if (i >= NUM_ORDERS)
+	{
+		return {};
+	}
+	std::vector<UWORD> result;
+	result.reserve(OrderButtons[i].NumButs);
+	for (size_t butNum = 0; butNum < OrderButtons[i].NumButs; ++butNum)
+	{
+		result.push_back(OrderButtons[i].ButImageID[butNum]);
+	}
+	return result;
+}
+
 
 // Add the droid order screen.
 // Returns true if the form was displayed ok.
@@ -551,7 +575,7 @@ bool intAddOrder(BASE_OBJECT *psObj)
 			Droid = nullptr;
 			psStructure = (STRUCTURE *)psObj;
 			psSelectedFactory = psStructure;
-			ASSERT_OR_RETURN(false, StructIsFactory(psSelectedFactory), "Trying to select a %s as a factory!",
+			ASSERT_OR_RETURN(false, psSelectedFactory->isFactory(), "Trying to select a %s as a factory!",
 			                 objInfo((BASE_OBJECT *)psSelectedFactory));
 		}
 		else
@@ -889,7 +913,7 @@ static bool SetSecondaryState(SECONDARY_ORDER sec, unsigned State)
 		if (SelectedDroid)
 		{
 			//Only set the state if it's not a transporter.
-			if (!isTransporter(SelectedDroid))
+			if (!SelectedDroid->isTransporter())
 			{
 				if (!secondarySetState(SelectedDroid, sec, (SECONDARY_STATE)State))
 				{

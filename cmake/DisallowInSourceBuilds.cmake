@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.16...3.31)
 
 function(DisallowInSourceBuilds)
 	get_filename_component(_real_source_dir "${CMAKE_SOURCE_DIR}" REALPATH)

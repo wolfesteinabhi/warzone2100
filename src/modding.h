@@ -22,10 +22,12 @@
 #define __INCLUDED_SRC_MODDING_H__
 
 #include "lib/framework/crc.h"
+#include "lib/framework/wzstring.h"
 
 #include <string>
 #include <vector>
 
+WzString convertToPlatformDependentPath(const char *platformIndependentPath);
 
 size_t addSubdirs(const char *basedir, const char *subdir, const bool appendToPath, std::vector<std::string> const *checkList, bool addToModList);
 void removeSubdirs(const char *basedir, const char *subdir);
@@ -33,14 +35,19 @@ void printSearchPath();
 
 void setOverrideMods(char *modlist);
 void clearOverrideMods();
+bool hasOverrideMods();
+
+bool hasCampaignMods();
+void clearCampaignMods();
 
 namespace WzMods {
 struct LoadedMod
 {
 	std::string name;
 	std::string filename;
+	std::string fullRealPath;
 
-	LoadedMod(const std::string& name, const std::string& filename);
+	LoadedMod(const std::string& name, const std::string& filename, const std::string& fullRealPath);
 	Sha256& getHash();
 
 private:
@@ -51,6 +58,7 @@ private:
 void clearLoadedMods();
 std::string const &getModList();
 std::vector<WzMods::LoadedMod> const &getLoadedMods();
+std::vector<std::string> const &getModNamesList();
 std::vector<Sha256> const &getModHashList();
 std::string getModFilename(Sha256 const &hash);
 

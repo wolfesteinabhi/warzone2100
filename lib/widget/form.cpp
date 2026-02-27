@@ -73,7 +73,7 @@ W_CLICKFORM::W_CLICKFORM()
 	, AudioCallback(WidgGetAudioCallback())
 {}
 
-unsigned W_CLICKFORM::getState()
+unsigned W_CLICKFORM::getState() const
 {
 	return state & (WBUT_DISABLE | WBUT_LOCK | WBUT_CLICKLOCK | WBUT_FLASH | WBUT_DOWN | WBUT_HIGHLIGHT);
 }
@@ -98,6 +98,34 @@ void W_CLICKFORM::setFlash(bool enable)
 		state &= ~WBUT_FLASH;
 	}
 	dirty = true;
+}
+
+void W_CLICKFORM::run(W_CONTEXT *psContext)
+{
+	W_FORM::run(psContext);
+
+	if (clickDownStart.has_value())
+	{
+		const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+		if (std::chrono::duration_cast<std::chrono::milliseconds>(now - clickDownStart.value()) >= widgGetClickHoldMS())
+		{
+			if (clickDownKey.has_value())
+			{
+				if (clickHeld(psContext, clickDownKey.value()))
+				{
+					// clear button down state, as the clickHeld event "consumed" this click
+					state &= ~WBUT_DOWN;
+				}
+			}
+			clickDownStart.reset();
+		}
+	}
+}
+
+// Returns true if "consumed" held click
+bool W_CLICKFORM::clickHeld(W_CONTEXT *psContext, WIDGET_KEY key)
+{
+	return false;
 }
 
 bool W_FORM::isUserMovable() const
@@ -135,14 +163,22 @@ void W_FORM::released(W_CONTEXT *psContext, WIDGET_KEY)
 
 void W_FORM::run(W_CONTEXT *psContext)
 {
-	if (!userMovable || !dragStart.has_value()) { return; }
+	// currently, no-op
+}
 
-	/* If the mouse is released *anywhere*, stop dragging */
-	if (mouseReleased(MOUSE_LMB))
+bool W_FORM::capturesMouseDrag(WIDGET_KEY wkey)
+{
+	return isUserMovable() && (wkey == WKEY_PRIMARY) && dragStart.has_value();
+}
+
+void W_FORM::mouseDragged(WIDGET_KEY wkey, W_CONTEXT *psStartContext, W_CONTEXT *psContext)
+{
+	if (wkey != WKEY_PRIMARY)
 	{
-		dragStart = nullopt;
 		return;
 	}
+
+	if (!userMovable || !dragStart.has_value()) { return; }
 
 	Vector2i currentMousePos(psContext->mx, psContext->my);
 	if (currentMousePos == dragStart.value()) { return; }
@@ -185,6 +221,8 @@ void W_CLICKFORM::clicked(W_CONTEXT *psContext, WIDGET_KEY key)
 		{
 			state &= ~WBUT_FLASH;  // Stop it flashing
 			state |= WBUT_DOWN;
+			clickDownStart = std::chrono::steady_clock::now();
+			clickDownKey = key;
 			dirty = true;
 
 			if (AudioCallback != nullptr)
@@ -211,6 +249,9 @@ void W_CLICKFORM::released(W_CONTEXT *, WIDGET_KEY key)
 			dirty = true;
 		}
 	}
+
+	clickDownStart = nullopt;
+	clickDownKey = nullopt;
 }
 
 
@@ -237,6 +278,8 @@ void W_CLICKFORM::highlightLost()
 	W_FORM::highlightLost();
 
 	state &= ~(WBUT_DOWN | WBUT_HIGHLIGHT);
+	clickDownStart = nullopt;
+	clickDownKey = nullopt;
 	dirty = true;
 }
 
@@ -265,7 +308,7 @@ void W_FORM::screenSizeDidChange(int oldWidth, int oldHeight, int newWidth, int 
 	WIDGET::screenSizeDidChange(oldWidth, oldHeight, newWidth, newHeight);
 }
 
-bool W_FORM::hitTest(int x, int y)
+bool W_FORM::hitTest(int x, int y) const
 {
 	if (!minimizable || formState != FormState::MINIMIZED)
 	{
@@ -275,15 +318,24 @@ bool W_FORM::hitTest(int x, int y)
 	return minimizedGeometry().contains(x, y);
 }
 
-bool W_FORM::processClickRecursive(W_CONTEXT *psContext, WIDGET_KEY key, bool wasPressed)
+std::shared_ptr<WIDGET> W_FORM::findMouseTargetRecursive(W_CONTEXT *psContext, WIDGET_KEY key, bool wasPressed)
 {
-	if (!minimizable || formState != FormState::MINIMIZED)
+	if ((!minimizable || formState != FormState::MINIMIZED) && !disableChildren)
 	{
-		return WIDGET::processClickRecursive(psContext, key, wasPressed);
+		return WIDGET::findMouseTargetRecursive(psContext, key, wasPressed);
 	}
-	// handle: minimized
-	ASSERT(disableChildren, "disableChildren should be set to true while minimized");
-	return WIDGET::processClickRecursive(psContext, key, wasPressed);
+
+	if (!visible())
+	{
+		return nullptr;
+	}
+
+	if (transparentToMouse())
+	{
+		return nullptr;
+	}
+
+	return shared_from_this();
 }
 
 void W_FORM::displayRecursive(WidgetGraphicsContext const &context)
@@ -419,6 +471,11 @@ void W_CLICKFORM::setTip(std::string string)
 	pTip = string;
 }
 
+void W_CLICKFORM::setHelp(optional<WidgetHelp> _help)
+{
+	help = _help;
+}
+
 bool W_CLICKFORM::isDown() const
 {
 	return (state & (WBUT_DOWN | WBUT_LOCK | WBUT_CLICKLOCK)) != 0;
@@ -476,7 +533,7 @@ void W_FULLSCREENOVERLAY_CLICKFORM::display(int xOffset, int yOffset)
 		return;
 	}
 
-	if (backgroundColor.rgba == 0)
+	if (backgroundColor.isTransparent())
 	{
 		return;
 	}

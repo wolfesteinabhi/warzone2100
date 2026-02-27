@@ -29,20 +29,32 @@
 
 class W_SLIDER : public WIDGET
 {
+public:
+	typedef std::function<void(W_SLIDER &)> SliderOnChangeFunc;
 
 public:
 	W_SLIDER(W_SLDINIT const *init);
 
 	void clicked(W_CONTEXT *psContext, WIDGET_KEY key) override;
+	void released(W_CONTEXT *psContext, WIDGET_KEY key) override;
 	void highlight(W_CONTEXT *psContext) override;
 	void highlightLost() override;
 	void run(W_CONTEXT *psContext) override;
 	void display(int xOffset, int yOffset) override;
 	void setTip(std::string string) override;
+	void setHelp(optional<WidgetHelp> help) override;
 	void enable();
 	void disable();
 	bool isHighlighted() const;
 	bool isEnabled() const;
+
+	std::string getTip() override;
+	WidgetHelp const * getHelp() const override;
+
+	void addOnChange(const SliderOnChangeFunc& func);
+
+	bool capturesMouseDrag(WIDGET_KEY) override;
+	void mouseDragged(WIDGET_KEY, W_CONTEXT *start, W_CONTEXT *current) override;
 
 	WSLD_ORIENTATION orientation;                   // The orientation of the slider
 	UWORD		numStops;			// Number of stop positions on the slider
@@ -50,6 +62,13 @@ public:
 	UWORD		pos;				// Current stop position of the slider
 	UWORD		state;				// Slider state
 	std::string pTip;                           // Tool tip
+private:
+	optional<WidgetHelp> help;
+	bool		isHandlingDrag = false;
+	std::vector<SliderOnChangeFunc> onChangeFuncs;
+private:
+	void updateSliderFromMousePosition(W_CONTEXT*);
+	void callOnChangeFuncs();
 };
 
 #endif // __INCLUDED_LIB_WIDGET_SLIDER_H__

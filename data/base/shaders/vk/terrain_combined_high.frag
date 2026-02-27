@@ -3,6 +3,10 @@
 #include "terrain_combined.glsl"
 
 layout (constant_id = 0) const float WZ_MIP_LOAD_BIAS = 0.f;
+layout (constant_id = 1) const uint WZ_SHADOW_MODE = 1;
+layout (constant_id = 2) const uint WZ_SHADOW_FILTER_SIZE = 5;
+layout (constant_id = 3) const uint WZ_SHADOW_CASCADES_COUNT = 3;
+layout (constant_id = 4) const uint WZ_POINT_LIGHT_ENABLED = 0;
 
 layout(set = 1, binding = 0) uniform sampler2D lightmap_tex;
 
@@ -18,18 +22,22 @@ layout(set = 1, binding = 6) uniform sampler2DArray decalNormal;
 layout(set = 1, binding = 7) uniform sampler2DArray decalSpecular;
 layout(set = 1, binding = 8) uniform sampler2DArray decalHeight;
 
+// depth map
+layout(set = 1, binding = 9) uniform sampler2DArrayShadow shadowMap;
+
 layout(location = 0) in FragData frag;
-layout(location = 9) flat in FragFlatData fragf;
+layout(location = 10) flat in FragFlatData fragf;
+layout(location = 12) in mat3 ModelTangentMatrix;
 
 layout(location = 0) out vec4 FragColor;
+
+#include "shadow_mapping.glsl"
+#include "light.glsl"
+#include "pointlights.glsl"
 
 vec3 getGroundUv(int i) {
 	uint groundNo = fragf.grounds[i];
 	return vec3(frag.uvGround * groundScale[groundNo/4u][groundNo%4u], groundNo);
-}
-
-vec3 getGround(int i) {
-	return texture(groundTex, getGroundUv(i), WZ_MIP_LOAD_BIAS).rgb * frag.groundWeights[i];
 }
 
 struct BumpData {
@@ -43,30 +51,57 @@ void getGroundBM(int i, inout BumpData res) {
 	float w = frag.groundWeights[i];
 	res.color += texture(groundTex, uv, WZ_MIP_LOAD_BIAS) * w;
 	vec3 N = texture(groundNormal, uv, WZ_MIP_LOAD_BIAS).xyz;
-	if (N == vec3(0)) {
-		N = vec3(0,0,1);
-	} else {
-		N = normalize(N * 2 - 1);
-	}
+	N = mix(normalize(N * 2.f - 1.f), vec3(0.f,0.f,1.f), vec3(float(N == vec3(0.f,0.f,0.f))));
 	res.N += N * w;
 	res.gloss += texture(groundSpecular, uv, WZ_MIP_LOAD_BIAS).r * w;
 }
 
-vec4 doBumpMapping(BumpData b, vec3 lightDir, vec3 halfVec) {
-	vec3 L = normalize(lightDir);
-	float lambertTerm = max(dot(b.N, L), 0.0); // diffuse lighting
-	// Gaussian specular term computation
-	vec3 H = normalize(halfVec);
-	float exponent = acos(dot(H, b.N)) / b.gloss*2 + 0.001;
-	float gaussianTerm = exp(-(exponent * exponent));
-
-	vec4 res = b.color*(ambientLight + diffuseLight*lambertTerm) + b.gloss*specularLight*gaussianTerm;
-
-	return vec4(res.rgb, b.color.a);
+vec3 blendAddEffectLighting(vec3 a, vec3 b) {
+	return a + b;
 }
 
-vec3 blendAddEffectLighting(vec3 a, vec3 b) {
-	return min(a + b, vec3(1.0));
+vec4 doBumpMapping(BumpData b, vec3 groundLightDir, vec3 groundHalfVec) {
+	vec3 L = normalize(groundLightDir);
+	float diffuseFactor = lambertTerm(b.N, L); // diffuse lighting
+	float visibility = getShadowVisibility(frag.posModelSpace, frag.posViewSpace, diffuseFactor, 0.001f);
+	diffuseFactor = min(diffuseFactor, visibility*diffuseFactor);
+
+	float specularFactor = blinnTerm(b.N, normalize(groundHalfVec), b.gloss, 16.f);
+
+	vec4 lightmap_vec4 = texture(lightmap_tex, frag.uvLightmap, 0.f);
+
+	float adjustedTileBrightness = pow(lightmap_vec4.a, 2.f-lightmap_vec4.a); // ... * tile brightness / ambient occlusion (stored in lightmap.a)
+
+	vec4 adjustedAmbientLight = ambientLight * adjustedTileBrightness;
+	vec4 light = adjustedAmbientLight + diffuseLight * diffuseFactor;
+	light.rgb = blendAddEffectLighting(light.rgb, (lightmap_vec4.rgb / 1.4f)); // additive color (from environmental point lights / effects)
+
+	vec4 light_spec = specularLight * specularFactor * diffuseFactor;
+	light_spec.rgb = blendAddEffectLighting(light_spec.rgb, (lightmap_vec4.rgb / 2.5f)); // additive color (from environmental point lights / effects)
+	light_spec *= (b.gloss * b.gloss);
+
+	vec4 res = (b.color*light) + light_spec;
+
+	if (WZ_POINT_LIGHT_ENABLED == 1)
+	{
+		// point lights
+		vec2 clipSpaceCoord = gl_FragCoord.xy / vec2(viewportWidth, viewportHeight);
+		res += iterateOverAllPointLights(clipSpaceCoord, frag.posModelSpace, b.N, normalize(groundHalfVec - groundLightDir), b.color, b.gloss, ModelTangentMatrix);
+	}
+
+	// Calculate water murkiness based on non-constant-density-fog, see https://iquilezles.org/articles/fog/
+	vec3 c2p = normalize(frag.posModelSpace - cameraPos.xyz); // camera to point vector
+	vec3 c = normalize(cameraPos.xyz);
+	float inscatter = 0.007; // in-scattering
+	float extinction = 0.001; // extinction
+	float murkyFactor = exp(-c.y * extinction) * (1.0 - exp( -(frag.posModelSpace.y+40.0) * c2p.y * extinction)) / (-c2p.y * extinction);
+	float murkiness = inscatter * murkyFactor;
+	float waterDeep = 0.003 * murkyFactor;
+	murkiness = clamp(murkiness, 0.0, 1.0);
+	waterDeep = clamp(waterDeep, 0.0, 1.0);
+	res.rgb = mix(res.rgb, (vec3(0.315,0.425,0.475)*vec3(1.0-waterDeep)), murkiness);
+
+	return vec4(res.rgb * lightmap_vec4.a, b.color.a);
 }
 
 vec4 main_bumpMapping() {
@@ -86,19 +121,12 @@ vec4 main_bumpMapping() {
 		// blend color, normal and gloss with ground ones based on alpha
 		bump.color = (1-a)*bump.color + a*vec4(decalColor.rgb, 1);
 		vec3 n = texture(decalNormal, uv, WZ_MIP_LOAD_BIAS).xyz;
-		if (n == vec3(0)) {
-			n = vec3(0,0,1);
-		} else {
-			n = normalize(n * 2 - 1);
-			n = vec3(n.xy * frag.decal2groundMat2, n.z);
-		}
+		vec3 n_normalized = normalize(n * 2.f - 1.f);
+		n = mix(vec3(n_normalized.xy * frag.decal2groundMat2, n_normalized.z), vec3(0.f,0.f,1.f), vec3(float(n == vec3(0.f,0.f,0.f))));
 		bump.N = (1-a)*bump.N + a*n;
 		bump.gloss = (1-a)*bump.gloss + a*texture(decalSpecular, uv, WZ_MIP_LOAD_BIAS).r;
 	}
-	vec4 lightmap_vec4 = texture(lightmap_tex, frag.uvLightmap);
-	vec4 color = doBumpMapping(bump, frag.groundLightDir, frag.groundHalfVec) * vec4(vec3(lightmap_vec4.a), 1.f); // ... * tile brightness / ambient occlusion (stored in lightmap.a);
-	color.rgb = blendAddEffectLighting(color.rgb, (lightmap_vec4.rgb / 1.5f)); // additive color (from environmental point lights / effects)
-	return color;
+	return doBumpMapping(bump, frag.groundLightDir, frag.groundHalfVec);
 }
 
 void main()
@@ -108,11 +136,8 @@ void main()
 	if (fogEnabled > 0)
 	{
 		// Calculate linear fog
-		float fogFactor = (fogEnd - frag.vertexDistance) / (fogEnd - fogStart);
-		fogFactor = clamp(fogFactor, 0.0, 1.0);
-
-		// Return fragment color
-		fragColor = mix(fragColor, vec4(fogColor.xyz, fragColor.w), fogFactor);
+		float fogFactor = (fogEnd - length(frag.posViewSpace)) / (fogEnd - fogStart);
+		fragColor = mix(fragColor, vec4(fogColor.rgb, fragColor.a), clamp(fogFactor, 0.0, 1.0));
 	}
 	FragColor = fragColor;
 }

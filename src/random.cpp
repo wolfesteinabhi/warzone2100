@@ -18,7 +18,7 @@
 	Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 */
 #include "random.h"
-#include "lib/netplay/netplay.h"
+#include "lib/netplay/sync_debug.h"
 
 static MersenneTwister gamePseudorandomNumberGenerator;
 static uint32_t lastSeed = 0;
@@ -94,8 +94,14 @@ uint32_t gameRandU32()
 	return gamePseudorandomNumberGenerator.u32();
 }
 
-int32_t gameRand(uint32_t limit)
+uint32_t gameRand(uint32_t limit)
 {
 	syncDebug("Used a random number.");
+
+	if (limit == 0)
+	{
+		return 0;
+	}
+
 	return gamePseudorandomNumberGenerator.u32() % limit;
 }

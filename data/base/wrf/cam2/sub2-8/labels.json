@@ -63,15 +63,19 @@
 		"label": "buildPos3",
 		"pos": [2304, 3072]
 	},
+	"position_16": {
+		"label": "vtolAppearPos",
+		"pos": [2688, 256]
+	},
 
 	"area_0": {
 		"label": "landingZone",
-		"pos1": [6800, 7120],
-		"pos2": [7024, 7412]
+		"pos1": [6784, 7168],
+		"pos2": [7040, 7424]
 	},
 	"area_1": {
 		"label": "RTLZ",
-		"pos1": [5504, 5504],
+		"pos1": [5504, 6144],
 		"pos2": [7808, 7808]
 	},
 	"area_2": {
@@ -137,5 +141,12 @@
 		"id": 227,
 		"player": 2,
 		"type": 1
+	},
+
+	"radius_0": {
+		"label": "vtolRemoveZone",
+		"subscriber": 2,
+		"pos": [256, 3328],
+		"radius": 300
 	}
 }

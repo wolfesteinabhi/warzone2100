@@ -54,6 +54,10 @@ struct ParagraphTextStyle
 class WzCachedText
 {
 public:
+	WzCachedText(uint32_t cacheDurationMs = 100):
+		font(font_regular),
+		cacheDurationMs(cacheDurationMs)
+	{}
 	WzCachedText(WzString text, iV_fonts font, uint32_t cacheDurationMs = 100):
 		text(text),
 		font(font),
@@ -68,11 +72,54 @@ public:
 		}
 	}
 
+	void setText(const WzString &_text, iV_fonts _fontID)
+	{
+		if (text == _text && font == _fontID)
+		{
+			return;
+		}
+		text = _text;
+		font = _fontID;
+		cachedTextWidth.reset();
+		if (cachedText)
+		{
+			cachedText->setText(text, font);
+		}
+	}
+
+	void resetCachedDimensions()
+	{
+		cachedTextWidth.reset();
+	}
+
+	inline const WzString& getText() const { return text; }
+	inline iV_fonts getFontID() const { return font; }
+	inline int32_t getTextWidth()
+	{
+		if (!cachedText)
+		{
+			if (!cachedTextWidth.has_value())
+			{
+				cachedTextWidth = iV_GetTextWidth(text, font);
+			}
+			return cachedTextWidth.value();
+		}
+		return cachedText->width();
+	}
+	inline int32_t getTextLineSize() const
+	{
+		if (!cachedText)
+		{
+			return iV_GetTextLineSize(font);
+		}
+		return cachedText->lineSize();
+	}
+
 	WzText *operator ->()
 	{
 		if (!cachedText)
 		{
-			cachedText = std::unique_ptr<WzText>(new WzText(text, font));
+			cachedText = std::make_unique<WzText>(text, font);
 		}
 
 		cacheExpireAt = realTime + (cacheDurationMs * GAME_TICKS_PER_SEC) / 1000;
@@ -82,6 +129,7 @@ public:
 private:
 	WzString text;
 	iV_fonts font;
+	optional<unsigned int> cachedTextWidth = nullopt;
 	uint32_t cacheDurationMs;
 	std::unique_ptr<WzText> cachedText = nullptr;
 	uint32_t cacheExpireAt = 0;
@@ -101,7 +149,7 @@ class Paragraph : public WIDGET
 public:
 	Paragraph(): WIDGET() {}
 
-	void addText(std::string const &text);
+	void addText(const WzString &text);
 	void addWidget(const std::shared_ptr<WIDGET> &widget, int32_t aboveBase);
 
 	void setFont(iV_fonts font)
@@ -142,6 +190,10 @@ public:
 	void released(W_CONTEXT *, WIDGET_KEY key) override;
 	void highlightLost() override;
 
+	nonstd::optional<std::vector<uint32_t>> getScrollSnapOffsets() override;
+
+	void forceSetAllFontColor(PIELIGHT colour);
+
 private:
 	std::vector<std::unique_ptr<ParagraphElement>> elements;
 	bool layoutDirty = true;
@@ -152,6 +204,8 @@ private:
 	bool hasElementWithLayoutDirty() const;
 	void updateLayout();
 	std::vector<std::vector<FlowLayoutFragment>> calculateLinesLayout();
+
+	std::vector<uint32_t> scrollSnapOffsets;
 
 	bool isMouseDown = false;
 	std::vector<W_PARAGRAPH_ONCLICK_FUNC> onClickHandlers;

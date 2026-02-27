@@ -145,7 +145,7 @@ WZVorbisDecoder* WZVorbisDecoder::fromFilename(const char* fileName)
 		debug(LOG_ERROR, "sound_LoadTrackFromFile: PHYSFS_openRead(\"%s\") failed with error: %s\n", fileName, WZ_PHYSFS_getLastError());
 		return nullptr;
 	}
-	std::unique_ptr<OggVorbis_File> ovf = std::unique_ptr<OggVorbis_File>(new OggVorbis_File());
+	std::unique_ptr<OggVorbis_File> ovf = std::make_unique<OggVorbis_File>();
 	// https://xiph.org/vorbis/doc/vorbisfile/ov_open_callbacks.html
 	const int error = ov_open_callbacks(fileHandle, ovf.get(), nullptr, 0, wz_oggVorbis_callbacks);
 	if (error != 0)
@@ -182,7 +182,7 @@ WZVorbisDecoder* WZVorbisDecoder::fromFilename(const char* fileName)
 		PHYSFS_close(fileHandle);
 		return nullptr;
 	}
-	
+
 	long seekable = ov_seekable(ovf.get());
 	if (!seekable)
 	{

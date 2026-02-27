@@ -25,7 +25,9 @@
 
 #include "lib/framework/wzconfig.h"
 #include "lib/framework/input.h"
+#include "lib/framework/file.h"
 #include "lib/framework/physfs_ext.h"
+#include "lib/netplay/connection_provider_registry.h"
 #include "lib/netplay/netplay.h"
 #include "lib/sound/mixer.h"
 #include "lib/sound/sounddefs.h"
@@ -53,114 +55,63 @@
 #include "display.h"
 #include "keybind.h" // for MAP_ZOOM_RATE_STEP
 #include "loadsave.h" // for autosaveEnabled
-#include "clparse.h" // for autoratingUrl
 #include "terrain.h"
+#include "hci/groups.h"
 
 #include <type_traits>
 
-#include "mINI/ini.h"
-#define PHYFSPP_IMPL
-#include "3rdparty/physfs.hpp"
+#include "3rdparty/INIReaderWriter.h"
+#include "3rdparty/gsl_finally.h"
+
+#include <fmt/core.h>
 
 // ////////////////////////////////////////////////////////////////////////////
 
 #define MASTERSERVERPORT	9990
 #define GAMESERVERPORT		2100
 #define BASECONFVERSION		1
-#define CURRCONFVERSION		2
+#define CURRCONFVERSION		4
 
 static const char *fileName = "config";
 
 // ////////////////////////////////////////////////////////////////////////////
 
-// PhysFS implementation of mINI::INIFileStreamGenerator
+// PhysFS helpers
 
-class PhysFSFileStreamGenerator : public mINI::INIFileStreamGenerator
+static inline std::string WZ_PHYSFS_getRealPath(const char *filename)
 {
-public:
-	PhysFSFileStreamGenerator(std::string const& utf8Path)
-	: INIFileStreamGenerator(utf8Path)
-	{ }
-	virtual ~PhysFSFileStreamGenerator() { }
-public:
-	virtual std::shared_ptr<std::istream> getFileReadStream() const override
+	std::string fullPath = WZ_PHYSFS_getRealDir_String(filename);
+	if (fullPath.empty()) { return fullPath; }
+	fullPath += PHYSFS_getDirSeparator();
+	fullPath += filename;
+	return fullPath;
+}
+
+static inline optional<uint64_t> WZ_PHYSFS_getFileSize(const char *filename)
+{
+	PHYSFS_Stat metaData = {};
+	if (PHYSFS_stat(filename, &metaData) == 0)
 	{
-		if (utf8Path.empty())
-		{
-			return nullptr;
-		}
-		try {
-			return std::static_pointer_cast<std::istream>(PhysFS::ifstream::make(utf8Path));
-		}
-		catch (const std::exception&)
-		{
-			// file likely does not exist
-			return nullptr;
-		}
+		return nullopt; // failed to get file info
 	}
-	virtual std::shared_ptr<std::ostream> getFileWriteStream() const override
+	if (metaData.filesize < 0)
 	{
-		if (utf8Path.empty())
-		{
-			return nullptr;
-		}
-		try {
-			return std::static_pointer_cast<std::ostream>(PhysFS::ofstream::make(utf8Path));
-		}
-		catch (const std::exception&)
-		{
-			// file likely does not exist
-			return nullptr;
-		}
+		// unknown filesize
+		return nullopt;
 	}
-	virtual bool fileExists() const override
-	{
-		if (utf8Path.empty())
-		{
-			return false;
-		}
-		return PHYSFS_exists(utf8Path.c_str());
-	}
-	optional<uint64_t> fileSize() const
-	{
-#if defined(WZ_PHYSFS_2_1_OR_GREATER)
-		PHYSFS_Stat metaData;
-		if (PHYSFS_stat(utf8Path.c_str(), &metaData) == 0)
-		{
-			return nullopt; // failed to get file info
-		}
-		if (metaData.filesize < 0)
-		{
-			// unknown filesize
-			return nullopt;
-		}
-		return static_cast<uint64_t>(metaData.filesize);
-#else
-		return nullopt; // unknown
-#endif
-	}
-	std::string realPath() const
-	{
-		std::string fullPath = WZ_PHYSFS_getRealDir_String(utf8Path.c_str());
-		if (fullPath.empty()) { return fullPath; }
-		fullPath += PHYSFS_getDirSeparator();
-		fullPath += utf8Path;
-		return fullPath;
-	}
-};
+	return static_cast<uint64_t>(metaData.filesize);
+}
 
 // ////////////////////////////////////////////////////////////////////////////
 
-typedef mINI::INIMap<std::string> IniSection;
-
-static optional<int> iniSectionGetInteger(const IniSection& iniSection, const std::string& key, optional<int> defaultValue = nullopt)
+static optional<int> iniSectionGetInteger(const INIReaderWriter::IniSection& iniSection, const std::string& key, optional<int> defaultValue = nullopt)
 {
-	if (!iniSection.has(key))
+	if (!iniSection.HasValue(key))
 	{
 		return defaultValue;
 	}
 	try {
-		auto valueStr = iniSection.get(key);
+		auto valueStr = iniSection.Get(key, "");
 		int valueInt = std::stoi(valueStr);
 		return valueInt;
 	}
@@ -171,18 +122,41 @@ static optional<int> iniSectionGetInteger(const IniSection& iniSection, const st
 	}
 }
 
-static void iniSectionSetInteger(IniSection& iniSection, const std::string& key, int value)
+static void iniSectionSetInteger(INIReaderWriter::IniSection& iniSection, const std::string& key, int value)
 {
-	iniSection[key] = std::to_string(value);
+	iniSection.SetString(key, std::to_string(value));
 }
 
-static optional<bool> iniSectionGetBool(const IniSection& iniSection, const std::string& key, optional<bool> defaultValue = nullopt)
+static optional<float> iniSectionGetFloat(const INIReaderWriter::IniSection& iniSection, const std::string& key, optional<float> defaultValue = nullopt)
 {
-	if (!iniSection.has(key))
+	if (!iniSection.HasValue(key))
 	{
 		return defaultValue;
 	}
-	auto valueStr = WzString::fromUtf8(iniSection.get(key)).toLower();
+	try {
+		auto valueStr = iniSection.Get(key, "");
+		float valueFloat = std::stof(valueStr);
+		return valueFloat;
+	}
+	catch (const std::exception& e)
+	{
+		debug(LOG_ERROR, "Failed to convert value for key: \"%s\" to float; error: %s", key.c_str(), e.what());
+		return defaultValue;
+	}
+}
+
+static void iniSectionSetFloat(INIReaderWriter::IniSection& iniSection, const std::string& key, float value)
+{
+	iniSection.SetString(key, fmt::format("{:g}", value));
+}
+
+static optional<bool> iniSectionGetBool(const INIReaderWriter::IniSection& iniSection, const std::string& key, optional<bool> defaultValue = nullopt)
+{
+	if (!iniSection.HasValue(key))
+	{
+		return defaultValue;
+	}
+	auto valueStr = WzString::fromUtf8(iniSection.Get(key, "")).toLower();
 	// first check if it's equal to "true" or "false" (case-insensitive)
 	if (valueStr == "true")
 	{
@@ -210,18 +184,18 @@ static optional<bool> iniSectionGetBool(const IniSection& iniSection, const std:
 	return defaultValue;
 }
 
-static void iniSectionSetBool(IniSection& iniSection, const std::string& key, bool value)
+static void iniSectionSetBool(INIReaderWriter::IniSection& iniSection, const std::string& key, bool value)
 {
-	iniSection[key] = (value) ? "true" : "false";
+	iniSection.SetString(key, (value) ? "true" : "false");
 }
 
-static optional<std::string> iniSectionGetString(const IniSection& iniSection, const std::string& key, optional<std::string> defaultValue = nullopt)
+static optional<std::string> iniSectionGetString(const INIReaderWriter::IniSection& iniSection, const std::string& key, optional<std::string> defaultValue = nullopt)
 {
-	if (!iniSection.has(key))
+	if (!iniSection.HasValue(key))
 	{
 		return defaultValue;
 	}
-	std::string result = iniSection.get(key);
+	std::string result = iniSection.Get(key, "");
 	// To support prior INI files written by QSettings, strip surrounding "" if present
 	if (!result.empty() && result.front() == '"' && result.back() == '"')
 	{
@@ -234,20 +208,13 @@ static optional<std::string> iniSectionGetString(const IniSection& iniSection, c
 	return result;
 }
 
-bool saveIniFile(mINI::INIFile &file, mINI::INIStructure &ini)
+bool saveIniFile(const char* outputPath, const INIReaderWriter& ini)
 {
 	// write out ini file changes
-	try
+	std::string iniOutput = ini.dump();
+	if (!saveFile(outputPath, iniOutput.c_str(), iniOutput.size()))
 	{
-		if (!file.write(ini))
-		{
-			debug(LOG_INFO, "Could not write configuration file \"%s\"", fileName);
-			return false;
-		}
-	}
-	catch (const std::exception& e)
-	{
-		debug(LOG_ERROR, "Ini write failed with exception: %s", e.what());
+		debug(LOG_ERROR, "Ini write failed");
 		return false;
 	}
 	return true;
@@ -255,46 +222,101 @@ bool saveIniFile(mINI::INIFile &file, mINI::INIStructure &ini)
 
 constexpr uint64_t MAX_CONFIG_FILE_SIZE = 1024 * 1024 * 2; // 2 MB seems like enough...
 
+static INIReaderWriter loadConfigIniFile(const char* inputFile)
+{
+	uint64_t fileStatSize = WZ_PHYSFS_getFileSize(inputFile).value_or(0);
+	if (fileStatSize > MAX_CONFIG_FILE_SIZE)
+	{
+		debug(LOG_ERROR, "Could not read existing configuration file \"%s\"; filesize (%" PRIu64 ") exceeds max", inputFile, fileStatSize);
+		return INIReaderWriter();
+	}
+
+	std::vector<char> fileContentsBuffer;
+
+	{
+		// load in the existing ini file
+		PHYSFS_File* file = PHYSFS_openRead(inputFile);
+		if (!file)
+		{
+			debug(LOG_WZ, "Could not read existing configuration file \"%s\"", inputFile);
+			return INIReaderWriter();
+		}
+
+		auto close_filehandle_finally = gsl::finally([&file, inputFile] {
+			if (!PHYSFS_close(file))
+			{
+				debug(LOG_ERROR, "Error closing %s: %s", inputFile, WZ_PHYSFS_getLastError());
+				// but continue on...
+			}
+			file = nullptr;
+		});
+
+		debug(LOG_WZ, "Reading configuration from: %s", WZ_PHYSFS_getRealPath(inputFile).c_str());
+
+		// get file size from the open file handle
+		PHYSFS_sint64 filesize = PHYSFS_fileLength(file);
+		if (filesize <= 0)
+		{
+			// File size could not be determined. Is a directory?
+			debug(LOG_INFO, "Could not read existing configuration file \"%s\"; filesize returned (%" PRIi64 ")", inputFile, static_cast<int64_t>(filesize));
+			return INIReaderWriter();
+		}
+		if (static_cast<uint64_t>(filesize) > MAX_CONFIG_FILE_SIZE)
+		{
+			debug(LOG_ERROR, "Could not read existing configuration file \"%s\"; filesize (%" PRIu64 ") exceeds max", inputFile, static_cast<uint64_t>(filesize));
+			return INIReaderWriter();
+		}
+		ASSERT_OR_RETURN(INIReaderWriter(), filesize < static_cast<PHYSFS_sint64>(std::numeric_limits<PHYSFS_sint32>::max()), "\"%s\" filesize >= std::numeric_limits<PHYSFS_sint32>::max()", inputFile);
+		ASSERT_OR_RETURN(INIReaderWriter(), static_cast<PHYSFS_uint64>(filesize) < static_cast<PHYSFS_uint64>(std::numeric_limits<size_t>::max()), "\"%s\" filesize >= std::numeric_limits<size_t>::max()", inputFile);
+
+		fileContentsBuffer.resize(static_cast<size_t>(filesize + 1));
+
+		/* Load the file data */
+		PHYSFS_sint64 length_read = WZ_PHYSFS_readBytes(file, fileContentsBuffer.data(), static_cast<PHYSFS_uint32>(filesize));
+		if (length_read != filesize)
+		{
+			fileContentsBuffer.clear();
+
+			debug(LOG_ERROR, "Reading %s short: %s", inputFile, WZ_PHYSFS_getLastError());
+			PHYSFS_close(file);
+			return INIReaderWriter();
+		}
+	}
+
+	if (fileContentsBuffer.empty())
+	{
+		debug(LOG_INFO, "Nothing read from configuration file \"%s\"?", inputFile);
+		return INIReaderWriter();
+	}
+
+	// append null
+	fileContentsBuffer[fileContentsBuffer.size() - 1] = 0;
+
+	// load IniReaderWriter from the buffer
+	auto result = INIReaderWriter(fileContentsBuffer.data(), fileContentsBuffer.size() - 1);
+	if (result.ParseError() != 0)
+	{
+		debug(LOG_ERROR, "Could not read existing configuration file \"%s\"; error parsing line: %d", inputFile, result.ParseError());
+		return INIReaderWriter();
+	}
+	return result;
+}
+
+
 // ////////////////////////////////////////////////////////////////////////////
 bool loadConfig()
 {
-	// first, create a file instance
-	auto fileStreamGenerator = std::make_shared<PhysFSFileStreamGenerator>(fileName);
-	mINI::INIFile file(fileStreamGenerator);
+	auto ini = loadConfigIniFile(fileName);
+	bool createdConfigFile = !ini.LoadedFromData();
 
-	// next, create a structure that will hold data
-	mINI::INIStructure ini;
-	bool createdConfigFile = false;
-
-	// now we can read the file
-	try
-	{
-		uint64_t fileSize = fileStreamGenerator->fileSize().value_or(0);
-		if (fileSize > MAX_CONFIG_FILE_SIZE)
-		{
-			createdConfigFile = true;
-			debug(LOG_ERROR, "Could not read existing configuration file \"%s\"; filesize (%" PRIu64 ") exceeds max", fileName, fileSize);
-			// will just proceed with an empty ini structure
-		}
-		if (!createdConfigFile && !file.read(ini))
-		{
-			createdConfigFile = true;
-			debug(LOG_WZ, "Could not read existing configuration file \"%s\"", fileName);
-			// will just proceed with an empty ini structure
-		}
-	}
-	catch (const std::exception& e)
-	{
-		createdConfigFile = true;
-		debug(LOG_ERROR, "Ini read failed with exception: %s", e.what());
-		ini.clear();
-		// will just proceed with an empty ini structure
-	}
-
-	auto& iniGeneral = ini["General"];
+	auto& iniGeneral = ini.GetSection("General");
 
 	auto iniGetInteger = [&iniGeneral](const std::string& key, optional<int> defaultValue) -> optional<int> {
 		return iniSectionGetInteger(iniGeneral, key, defaultValue);
+	};
+
+	auto iniGetFloat = [&iniGeneral](const std::string& key, optional<int> defaultValue) -> optional<int> {
+		return iniSectionGetFloat(iniGeneral, key, defaultValue);
 	};
 
 	auto iniGetIntegerOpt = [&iniGeneral](const std::string& key) -> optional<int> {
@@ -311,6 +333,27 @@ bool loadConfig()
 
 	auto iniGetString = [&iniGeneral](const std::string& key, optional<std::string> defaultValue) -> optional<std::string> {
 		return iniSectionGetString(iniGeneral, key, defaultValue);
+	};
+
+	auto iniGetMouseKeyCode = [&iniGeneral](const std::string& key, optional<MOUSE_KEY_CODE> defaultValue) -> optional<MOUSE_KEY_CODE> {
+		auto intVal = iniSectionGetInteger(iniGeneral, key);
+		if (!intVal.has_value())
+		{
+			return defaultValue;
+		}
+		if (intVal.value() == 0)
+		{
+			return nullopt; // 0 represents "disabled"
+		}
+		if (intVal.value() >= MOUSE_LMB && intVal.value() <= MOUSE_X2) // deliberately exclude mouse MOUSE_WUP + MOUSE_WDN
+		{
+			return static_cast<MOUSE_KEY_CODE>(intVal.value());
+		}
+		else
+		{
+			debug(LOG_WARNING, "Unsupported / invalid MOUSE_KEY_CODE value: %d", intVal.value());
+			return defaultValue;
+		}
 	};
 
 	auto iniGetPlayerLeaveMode = [&iniGeneral](const std::string& key, PLAYER_LEAVE_MODE defaultValue) -> optional<PLAYER_LEAVE_MODE> {
@@ -332,7 +375,8 @@ bool loadConfig()
 
 	ActivityManager::instance().beginLoadingSettings();
 
-	debug(LOG_WZ, "Reading configuration from: %s", fileStreamGenerator->realPath().c_str());
+	auto configVersion = iniGetInteger("configVersion", BASECONFVERSION).value();
+
 	if (auto value = iniGetIntegerOpt("voicevol"))
 	{
 		sound_SetUIVolume(static_cast<float>(value.value()) / 100.0f);
@@ -374,7 +418,7 @@ bool loadConfig()
 	}
 	if (iniGeneral.has("language"))
 	{
-		setLanguage(iniGeneral.get("language").c_str());
+		setLanguage(iniGetString("language", "").value().c_str());
 	}
 	if (auto value = iniGetBoolOpt("nomousewarp"))
 	{
@@ -389,12 +433,30 @@ bool loadConfig()
 		war_SetCameraSpeed((v % CAMERASPEED_STEP != 0) ? CAMERASPEED_DEFAULT : v);
 	}
 	setShakeStatus(iniGetBool("shake", false).value());
+	war_setGroupsMenuEnabled(iniGetBool("groupmenu", true).value());
+	setGroupButtonEnabled(war_getGroupsMenuEnabled());
+	war_setOptionsButtonVisibility(iniGetInteger("optionsButtonVisibility", war_getOptionsButtonVisibility()).value());
 	setCameraAccel(iniGetBool("cameraAccel", true).value());
 	setDrawShadows(iniGetBool("shadows", true).value());
 	war_setSoundEnabled(iniGetBool("sound", true).value());
 	setInvertMouseStatus(iniGetBool("mouseflip", true).value());
 	setRightClickOrders(iniGetBool("RightClickOrders", false).value());
-	setMiddleClickRotate(iniGetBool("MiddleClickRotate", false).value());
+	setPanMouseKey(iniGetMouseKeyCode("mouseKeyPan", getPanMouseKey()));
+	if (!createdConfigFile && configVersion < 3)
+	{
+		// Upgrade old MiddleClickRotate value
+		auto oldMiddleClickRotateValue = iniGetBool("MiddleClickRotate", false).value();
+		if (!setRotateMouseKey((oldMiddleClickRotateValue) ? MOUSE_MMB : MOUSE_RMB) && !oldMiddleClickRotateValue)
+		{
+			// if unable to set (because of conflict, presumably with RightClickOrders), default to MMB
+			setRotateMouseKey(MOUSE_MMB);
+		}
+	}
+	else
+	{
+		setRotateMouseKey(iniGetMouseKeyCode("mouseKeyRotate", getRotateMouseKey()));
+	}
+	setEdgeScrollOutsideWindowBounds(iniGetBool("edgeScrollOutsideWindow", getEdgeScrollOutsideWindowBounds()).value());
 	if (auto value = iniGetIntegerOpt("cursorScale"))
 	{
 		war_setCursorScale(value.value());
@@ -411,10 +473,8 @@ bool loadConfig()
 	radarRotationArrow = iniGetBool("radarRotationArrow", true).value();
 	hostQuitConfirmation = iniGetBool("hostQuitConfirmation", true).value();
 	war_SetPauseOnFocusLoss(iniGetBool("PauseOnFocusLoss", false).value());
-	setAutoratingUrl(iniGetString("autoratingUrlV2", WZ_DEFAULT_PUBLIC_RATING_LOOKUP_SERVICE_URL).value());
-	setAutoratingEnable(iniGetBool("autorating", false).value());
 	NETsetMasterserverName(iniGetString("masterserver_name", "lobby.wz2100.net").value().c_str());
-	mpSetServerName(iniGetString("server_name", "").value().c_str());
+	mpSetServerName(iniGetString("server_name", "").value());
 //	iV_font(ini.value("fontname", "DejaVu Sans").toString().toUtf8().constData(),
 //	        ini.value("fontface", "Book").toString().toUtf8().constData(),
 //	        ini.value("fontfacebold", "Bold").toString().toUtf8().constData());
@@ -424,13 +484,15 @@ bool loadConfig()
 		NETsetGameserverPort(iniGetInteger("gameserver_port", GAMESERVERPORT).value());
 	}
 	NETsetJoinPreferenceIPv6(iniGetBool("prefer_ipv6", true).value());
+	NETsetDefaultMPHostFreeChatPreference(iniGetBool("hostingChatDefault", NETgetDefaultMPHostFreeChatPreference()).value());
+	NETsetEnableTCPNoDelay(iniGetBool("tcp_nodelay", NETgetEnableTCPNoDelay()).value());
 	setPublicIPv4LookupService(iniGetString("publicIPv4LookupService_Url", WZ_DEFAULT_PUBLIC_IPv4_LOOKUP_SERVICE_URL).value(), iniGetString("publicIPv4LookupService_JSONKey", WZ_DEFAULT_PUBLIC_IPv4_LOOKUP_SERVICE_JSONKEY).value());
 	setPublicIPv6LookupService(iniGetString("publicIPv6LookupService_Url", WZ_DEFAULT_PUBLIC_IPv6_LOOKUP_SERVICE_URL).value(), iniGetString("publicIPv6LookupService_JSONKey", WZ_DEFAULT_PUBLIC_IPv6_LOOKUP_SERVICE_JSONKEY).value());
-	war_SetFMVmode((FMV_MODE)iniGetInteger("FMVmode", FMV_FULLSCREEN).value());
+	war_SetFMVmode((FMV_MODE)iniGetInteger("FMVmode", war_GetFMVmode()).value());
 	war_setScanlineMode((SCANLINE_MODE)iniGetInteger("scanlines", SCANLINES_OFF).value());
 	seq_SetSubtitles(iniGetBool("subtitles", true).value());
 	setDifficultyLevel((DIFFICULTY_LEVEL)iniGetInteger("difficulty", DL_NORMAL).value());
-	if (!createdConfigFile && iniGetInteger("configVersion", BASECONFVERSION).value() < CURRCONFVERSION)
+	if (!createdConfigFile && configVersion < 2)
 	{
 		int level = (int)getDifficultyLevel() + 1;
 		if (level > static_cast<int>(AIDifficulty::INSANE))
@@ -472,7 +534,8 @@ bool loadConfig()
 	{
 		setTextureSize(value.value());
 	}
-	NetPlay.isUPNP = iniGetBool("UPnP", true).value();
+	// First try the new setting called "portMapping", otherwise try the legacy "UPnP" option.
+	NetPlay.isPortMappingEnabled = iniGetBool("portMapping", iniGetBool("UPnP", true).value()).value();
 	if (auto value = iniGetIntegerOpt("antialiasing"))
 	{
 		war_setAntialiasing(value.value());
@@ -480,12 +543,32 @@ bool loadConfig()
 	if (auto value = iniGetIntegerOpt("fullscreen"))
 	{
 		int fullscreenmode_int = value.value();
+		// Handle porting from old fullscreen values
+		if (fullscreenmode_int != static_cast<int>(WINDOW_MODE::windowed))
+		{
+			fullscreenmode_int = static_cast<int>(WINDOW_MODE::fullscreen);
+		}
 		if (fullscreenmode_int >= static_cast<int>(MIN_VALID_WINDOW_MODE) && fullscreenmode_int <= static_cast<int>(MAX_VALID_WINDOW_MODE))
 		{
 			war_setWindowMode(static_cast<WINDOW_MODE>(fullscreenmode_int));
 		}
 	}
-	war_SetTrapCursor(iniGetBool("trapCursor", false).value());
+	if (!createdConfigFile && configVersion < 3)
+	{
+		// Upgrade old bool value to TrapCursorMode
+		// - map true -> Enabled and upgrade false -> Automatic
+		auto oldBoolValue = iniGetBool("trapCursor", false).value();
+		war_SetTrapCursor((oldBoolValue) ? TrapCursorMode::Enabled : TrapCursorMode::Automatic);
+	}
+	else
+	{
+		auto intTrapCursorValue = iniGetInteger("trapCursor", static_cast<int>(TrapCursorMode::Automatic)).value();
+		if (intTrapCursorValue < static_cast<int>(TrapCursorMode::Disabled) || intTrapCursorValue > static_cast<int>(TrapCursorMode::Automatic))
+		{
+			intTrapCursorValue = static_cast<int>(TrapCursorMode::Automatic);
+		}
+		war_SetTrapCursor(static_cast<TrapCursorMode>(intTrapCursorValue));
+	}
 	war_SetColouredCursor(iniGetBool("coloredCursor", true).value());
 	// this should be enabled on all systems by default
 	war_SetVsync(iniGetInteger("vsync", 1).value());
@@ -518,16 +601,22 @@ bool loadConfig()
 
 	int fullscreenWidth = iniGetInteger("fullscreenWidth", war_GetFullscreenModeWidth()).value();
 	int fullscreenHeight = iniGetInteger("fullscreenHeight", war_GetFullscreenModeHeight()).value();
+	float fullscreenPixelDensity = iniGetFloat("fullscreenPixelDensity", war_GetFullscreenModePixelDensity()).value();
+	float fullscreenRefreshRate = iniGetFloat("fullscreenRefreshRate", war_GetFullscreenModeRefreshRate()).value();
 	int fullscreenScreen = iniGetInteger("fullscreenScreen", 0).value();
-	if ((fullscreenWidth != 0 && fullscreenWidth < 640) || (fullscreenHeight != 0 && fullscreenHeight < 480))	// sanity check
+	bool ignoreOldFullscreenValues = (!createdConfigFile && configVersion <= 3);
+	if (ignoreOldFullscreenValues || (fullscreenWidth != 0 && fullscreenWidth < 640) || (fullscreenHeight != 0 && fullscreenHeight < 480))	// sanity check
 	{
 		// set to special value (0x0) that reverts to the default for this display
 		fullscreenWidth = 0;
 		fullscreenHeight = 0;
+		fullscreenRefreshRate = 0.f;
 	}
 	war_SetFullscreenModeWidth(fullscreenWidth);
 	war_SetFullscreenModeHeight(fullscreenHeight);
 	war_SetFullscreenModeScreen(fullscreenScreen);
+	war_SetFullscreenModePixelDensity(fullscreenPixelDensity);
+	war_SetFullscreenModeRefreshRate(fullscreenRefreshRate);
 
 	if (auto value = iniGetIntegerOpt("bpp"))
 	{
@@ -581,6 +670,9 @@ bool loadConfig()
 		pie_EnableFog(false);
 	}
 	war_setAutoLagKickSeconds(iniGetInteger("hostAutoLagKickSeconds", war_getAutoLagKickSeconds()).value());
+	war_setAutoLagKickAggressiveness(iniGetInteger("hostAutoLagKickAggressiveness", war_getAutoLagKickAggressiveness()).value());
+	war_setAutoDesyncKickSeconds(iniGetInteger("hostAutoDesyncKickSeconds", war_getAutoDesyncKickSeconds()).value());
+	war_setAutoNotReadyKickSeconds(iniGetInteger("hostAutoNotReadyKickSeconds", war_getAutoNotReadyKickSeconds()).value());
 	war_setDisableReplayRecording(iniGetBool("disableReplayRecord", war_getDisableReplayRecording()).value());
 	war_setMaxReplaysSaved(iniGetInteger("maxReplaysSaved", war_getMaxReplaysSaved()).value());
 	war_setOldLogsLimit(iniGetInteger("oldLogsLimit", war_getOldLogsLimit()).value());
@@ -588,7 +680,7 @@ bool loadConfig()
 	war_setMPopenSpectatorSlots(static_cast<uint16_t>(std::max<int>(0, std::min<int>(openSpecSlotsIntValue, MAX_SPECTATOR_SLOTS))));
 	war_setFogEnd(iniGetInteger("fogEnd", 8000).value());
 	war_setFogStart(iniGetInteger("fogStart", 4000).value());
-	if (auto value = iniGetIntegerOpt("terrainShaderQuality"))
+	if (auto value = iniGetIntegerOpt("terrainMode"))
 	{
 		auto intValue = value.value();
 		if (intValue >= 0 && intValue <= TerrainShaderQuality_MAX)
@@ -597,9 +689,48 @@ bool loadConfig()
 		}
 		else
 		{
-			debug(LOG_WARNING, "Unsupported / invalid terrainShaderQuality value: %d; defaulting to: %d", intValue, static_cast<int>(getTerrainShaderQuality()));
+			debug(LOG_WARNING, "Unsupported / invalid terrainMode value: %d; using default", intValue);
 		}
 	}
+	if (auto value = iniGetIntegerOpt("terrainShadingQuality"))
+	{
+		auto intValue = value.value();
+		if (!setTerrainMappingTexturesMaxSize(intValue))
+		{
+			debug(LOG_WARNING, "Unsupported / invalid terrainShadingQuality value: %d; using default", intValue);
+		}
+	}
+	setDrawTerrainShadows(iniGetBool("terrainShadows", true).value());
+	war_setShadowFilterSize(iniGetInteger("shadowFilterSize", (int)war_getShadowFilterSize()).value());
+	if (auto value = iniGetIntegerOpt("shadowMapResolution"))
+	{
+		war_setShadowMapResolution(value.value());
+	}
+
+	{
+		auto value = iniGetBoolOpt("pointLightsPerpixel");
+		war_setPointLightPerPixelLighting(value.value_or(false));
+	}
+
+	std::string defAI = iniGetString("defaultSkirmishAI", DEFAULT_SKIRMISH_AI_SCRIPT_NAME).value();
+	setDefaultSkirmishAI(defAI);
+
+	war_setPlayAudioCue_GroupReporting(iniGetBool("audioCueGroupReporting", war_getPlayAudioCue_GroupReporting()).value());
+
+	auto hostConnProvider = war_getHostConnectionProvider();
+	if (iniGeneral.has("hostConnectionProvider"))
+	{
+		std::string netBackend = iniGetString("hostConnectionProvider", "tcp").value();
+		if (!net_backend_from_str(netBackend.c_str(), hostConnProvider))
+		{
+			hostConnProvider = ConnectionProviderType::TCP_DIRECT; // fall back to using TCP_DIRECT
+			const auto defConnProviderStr = to_string(hostConnProvider);
+			debug(LOG_WARNING, "Unsupported / invalid network backend: %s; defaulting to: %s",
+				netBackend.c_str(), defConnProviderStr.c_str());
+		}
+		war_setHostConnectionProvider(hostConnProvider);
+	}
+
 	ActivityManager::instance().endLoadingSettings();
 	return true;
 }
@@ -607,36 +738,7 @@ bool loadConfig()
 // ////////////////////////////////////////////////////////////////////////////
 bool saveConfig()
 {
-	// first, create a file instance
-	auto fileStreamGenerator = std::make_shared<PhysFSFileStreamGenerator>(fileName);
-	mINI::INIFile file(fileStreamGenerator);
-
-	// next, create a structure that will hold data
-	mINI::INIStructure ini;
-
-	// read in the current file
-	try
-	{
-		uint64_t fileSize = fileStreamGenerator->fileSize().value_or(0);
-		bool skipLoadExisting = false;
-		if (fileSize > MAX_CONFIG_FILE_SIZE)
-		{
-			skipLoadExisting = true;
-			debug(LOG_ERROR, "Could not read existing configuration file \"%s\"; filesize (%" PRIu64 ") exceeds max", fileName, fileSize);
-			// will just proceed with an empty ini structure
-		}
-		if (!skipLoadExisting && !file.read(ini))
-		{
-			debug(LOG_WZ, "Could not read existing configuration file \"%s\"", fileName);
-			// will just proceed with an empty ini structure
-		}
-	}
-	catch (const std::exception& e)
-	{
-		debug(LOG_ERROR, "Ini read failed with exception: %s", e.what());
-		ini.clear();
-		// will just proceed with an empty ini structure
-	}
+	auto ini = loadConfigIniFile(fileName);
 
 	std::string fullConfigFilePath;
 	if (PHYSFS_getWriteDir())
@@ -647,16 +749,37 @@ bool saveConfig()
 	fullConfigFilePath += fileName;
 	debug(LOG_WZ, "Writing configuration to: \"%s\"", fullConfigFilePath.c_str());
 
-	auto& iniGeneral = ini["General"];
+	auto& iniGeneral = ini.GetSection("General");
 
 	auto iniSetInteger = [&iniGeneral](const std::string& key, int value) {
 		iniSectionSetInteger(iniGeneral, key, value);
+	};
+	auto iniSetFloat = [&iniGeneral](const std::string& key, float value) {
+		iniSectionSetFloat(iniGeneral, key, value);
 	};
 	auto iniSetBool = [&iniGeneral](const std::string& key, bool value) {
 		iniSectionSetBool(iniGeneral, key, value);
 	};
 	auto iniSetString = [&iniGeneral](const std::string& key, const std::string& value) {
-		iniGeneral[key] = value;
+		iniGeneral.SetString(key, value);
+	};
+	auto iniSetFromCString = [&iniGeneral](const std::string& key, const char* value, size_t maxLength) {
+		std::string strVal;
+		if (value)
+		{
+			size_t len = strnlen(value, maxLength);
+			ASSERT(len < maxLength, "Input c-string value (for key: %s) appears to be missing null-terminator?", key.c_str());
+			strVal.assign(value, len);
+		}
+		iniGeneral.SetString(key, strVal);
+	};
+	auto iniSetMouseKeyOpt = [&iniGeneral](const std::string& key, optional<MOUSE_KEY_CODE> code) {
+		if (!code.has_value())
+		{
+			iniSectionSetInteger(iniGeneral, key, 0);
+			return;
+		}
+		iniSectionSetInteger(iniGeneral, key, static_cast<int>(code.value()));
 	};
 
 	// //////////////////////////
@@ -675,6 +798,8 @@ bool saveConfig()
 	iniSetInteger("fullscreenWidth", war_GetFullscreenModeWidth());
 	iniSetInteger("fullscreenHeight", war_GetFullscreenModeHeight());
 	iniSetInteger("fullscreenScreen", war_GetFullscreenModeScreen());
+	iniSetFloat("fullscreenPixelDensity", war_GetFullscreenModePixelDensity());
+	iniSetFloat("fullscreenRefreshRate", war_GetFullscreenModeRefreshRate());
 	iniSetInteger("bpp", war_GetVideoBufferDepth());
 	iniSetInteger("fullscreen", static_cast<typename std::underlying_type<WINDOW_MODE>::type>(war_getWindowMode()));
 	iniSetString("language", getLanguage());
@@ -684,11 +809,15 @@ bool saveConfig()
 	iniSetInteger("lodDistanceBias", war_getLODDistanceBiasPercentage());
 	iniSetBool("cameraAccel", getCameraAccel());		// camera acceleration
 	iniSetInteger("shake", (int)getShakeStatus());		// screenshake
+	iniSetInteger("groupmenu", (int)war_getGroupsMenuEnabled());		// groups menu
+	iniSetInteger("optionsButtonVisibility", (int)war_getOptionsButtonVisibility());
 	iniSetInteger("mouseflip", (int)(getInvertMouseStatus()));	// flipmouse
 	iniSetInteger("nomousewarp", (int)getMouseWarp());		// mouse warp
 	iniSetInteger("coloredCursor", (int)war_GetColouredCursor());
 	iniSetInteger("RightClickOrders", (int)(getRightClickOrders()));
-	iniSetInteger("MiddleClickRotate", (int)(getMiddleClickRotate()));
+	iniSetMouseKeyOpt("mouseKeyPan", getPanMouseKey());
+	iniSetMouseKeyOpt("mouseKeyRotate", getRotateMouseKey());
+	iniSetInteger("edgeScrollOutsideWindow", (int)(getEdgeScrollOutsideWindowBounds()));
 	iniSetInteger("cursorScale", (int)war_getCursorScale());
 	iniSetInteger("textureCompression", (wz_texture_compression) ? 1 : 0);
 	iniSetInteger("showFPS", (int)showFPS);
@@ -700,20 +829,18 @@ bool saveConfig()
 	iniSetInteger("subtitles", (int)(seq_GetSubtitles()));		// subtitles
 	iniSetInteger("radarObjectMode", (int)bEnemyAllyRadarColor);   // enemy/allies radar view
 	iniSetInteger("radarTerrainMode", (int)radarDrawMode);
-	iniSetBool("trapCursor", war_GetTrapCursor());
+	iniSetInteger("trapCursor", (int)war_GetTrapCursor());
 	iniSetInteger("vsync", war_GetVsync());
 	iniSetInteger("displayScale", war_GetDisplayScale());
 	iniSetBool("autoAdjustDisplayScale", war_getAutoAdjustDisplayScale());
 	iniSetInteger("textureSize", getTextureSize());
 	iniSetInteger("antialiasing", war_getAntialiasing());
-	iniSetInteger("UPnP", (int)NetPlay.isUPNP);
+	iniSetInteger("portMapping", (int)NetPlay.isPortMappingEnabled);
 	iniSetBool("rotateRadar", rotateRadar);
 	iniSetBool("radarRotationArrow", radarRotationArrow);
 	iniSetBool("hostQuitConfirmation", hostQuitConfirmation);
 	iniSetBool("PauseOnFocusLoss", war_GetPauseOnFocusLoss());
-	iniSetString("autoratingUrlV2", getAutoratingUrl());
-	iniSetBool("autorating", getAutoratingEnable());
-	iniSetString("masterserver_name", NETgetMasterserverName());
+	iniSetFromCString("masterserver_name", NETgetMasterserverName(), 255);
 	iniSetInteger("masterserver_port", (int)NETgetMasterserverPort());
 	iniSetString("server_name", mpGetServerName());
 	if (!netGameserverPortOverride) // do not save the config port setting if there's a command-line override
@@ -721,6 +848,9 @@ bool saveConfig()
 		iniSetInteger("gameserver_port", (int)NETgetGameserverPort());
 	}
 	iniSetBool("prefer_ipv6", NETgetJoinPreferenceIPv6());
+	iniSetInteger("hostingChatDefault", (NETgetDefaultMPHostFreeChatPreference()) ? 1 : 0);
+	iniSetInteger("tcp_nodelay", (NETgetEnableTCPNoDelay()) ? 1 : 0);
+
 	iniSetString("publicIPv4LookupService_Url", getPublicIPv4LookupServiceUrl());
 	iniSetString("publicIPv4LookupService_JSONKey", getPublicIPv4LookupServiceJSONKey());
 	iniSetString("publicIPv6LookupService_Url", getPublicIPv6LookupServiceUrl());
@@ -735,7 +865,7 @@ bool saveConfig()
 		{
 			if (bMultiPlayer && NetPlay.bComms)
 			{
-				iniSetString("gameName", game.name);			//  last hosted game
+				iniSetFromCString("gameName", game.name, 128);			//  last hosted game
 				war_setMPInactivityMinutes(game.inactivityMinutes);
 				war_setMPGameTimeLimitMinutes(game.gameTimeLimitMinutes);
 				war_setMPPlayerLeaveMode(game.playerLeaveMode);
@@ -744,7 +874,7 @@ bool saveConfig()
 				auto currentSpectatorSlotInfo = SpectatorInfo::currentNetPlayState();
 				war_setMPopenSpectatorSlots(currentSpectatorSlotInfo.totalSpectatorSlots);
 			}
-			iniSetString("mapName", game.map);				//  map name
+			iniSetFromCString("mapName", game.map, 128);				//  map name
 			iniSetString("mapHash", game.hash.toString());          //  map hash
 			iniSetInteger("maxPlayers", (int)game.maxPlayers);		// maxPlayers
 			iniSetInteger("powerLevel", game.power);				// power
@@ -752,7 +882,7 @@ bool saveConfig()
 			iniSetInteger("alliance", (int)game.alliance);		// allow alliances
 			iniSetInteger("newScavengers", game.scavengers);
 		}
-		iniSetString("playerName", (char *)sPlayer);		// player name
+		iniSetFromCString("playerName", (char *)sPlayer, 128);		// player name
 	}
 	iniSetInteger("colourMP", war_getMPcolour());
 	iniSetInteger("inactivityMinutesMP", war_getMPInactivityMinutes());
@@ -768,41 +898,31 @@ bool saveConfig()
 	iniSetBool("autosaveEnabled", autosaveEnabled);
 	iniSetBool("fog", pie_GetFogEnabled());
 	iniSetInteger("hostAutoLagKickSeconds", war_getAutoLagKickSeconds());
+	iniSetInteger("hostAutoDesyncKickSeconds", war_getAutoDesyncKickSeconds());
+	iniSetInteger("hostAutoNotReadyKickSeconds", war_getAutoNotReadyKickSeconds());
 	iniSetBool("disableReplayRecord", war_getDisableReplayRecording());
 	iniSetInteger("maxReplaysSaved", war_getMaxReplaysSaved());
 	iniSetInteger("oldLogsLimit", war_getOldLogsLimit());
 	iniSetInteger("fogEnd", war_getFogEnd());
 	iniSetInteger("fogStart", war_getFogStart());
-	iniSetInteger("terrainShaderQuality", getTerrainShaderQuality());
+	iniSetInteger("terrainMode", getTerrainShaderQuality());
+	iniSetInteger("terrainShadingQuality", getTerrainMappingTexturesMaxSize());
+	iniSetInteger("terrainShadows", (int)(getDrawTerrainShadows()));
+	iniSetInteger("shadowFilterSize", (int)war_getShadowFilterSize());
+	iniSetInteger("shadowMapResolution", (int)war_getShadowMapResolution());
+	iniSetBool("pointLightsPerpixel", war_getPointLightPerPixelLighting());
+	iniSetString("defaultSkirmishAI", getDefaultSkirmishAI());
+	iniSetBool("audioCueGroupReporting", war_getPlayAudioCue_GroupReporting());
 	iniSetInteger("configVersion", CURRCONFVERSION);
 
 	// write out ini file changes
-	bool result = saveIniFile(file, ini);
+	bool result = saveIniFile(fileName, ini);
 	return result;
 }
 
 bool saveGfxConfig()
 {
-	// first, create a file instance
-	mINI::INIFile file(std::make_shared<PhysFSFileStreamGenerator>(fileName));
-
-	// next, create a structure that will hold data
-	mINI::INIStructure ini;
-
-	// read in the current file
-	try
-	{
-		if (!file.read(ini))
-		{
-			debug(LOG_WZ, "Could not read existing configuration file \"%s\"", fileName);
-			// will just proceed with an empty ini structure
-		}
-	}
-	catch (const std::exception& e)
-	{
-		debug(LOG_ERROR, "Ini read failed with exception: %s", e.what());
-		return false;
-	}
+	auto ini = loadConfigIniFile(fileName);
 
 	std::string fullConfigFilePath;
 	if (PHYSFS_getWriteDir())
@@ -813,17 +933,18 @@ bool saveGfxConfig()
 	fullConfigFilePath += fileName;
 	debug(LOG_WZ, "Writing gfx configuration to: \"%s\"", fullConfigFilePath.c_str());
 
-	auto& iniGeneral = ini["General"];
+	auto& iniGeneral = ini.GetSection("General");
 
 	auto iniSetString = [&iniGeneral](const std::string& key, const std::string& value) {
-		iniGeneral[key] = value;
+		iniGeneral.SetString(key, value);
 	};
 
-	// only change the gfx entry
+	// only change specific gfx entries
 	iniSetString("gfxbackend", to_string(war_getGfxBackend()));
+	iniSectionSetInteger(iniGeneral, "antialiasing", war_getAntialiasing());
 
 	// write out ini file changes
-	bool result = saveIniFile(file, ini);
+	bool result = saveIniFile(fileName, ini);
 	return result;
 }
 
@@ -831,29 +952,26 @@ bool saveGfxConfig()
 // Ensures that others' games don't change our own configuration settings
 bool reloadMPConfig()
 {
-	// first, create a file instance
-	mINI::INIFile file(std::make_shared<PhysFSFileStreamGenerator>(fileName));
-
-	// next, create a structure that will hold data
-	mINI::INIStructure ini;
-
-	// now we can read the file
-	try
+	auto ini = loadConfigIniFile(fileName);
+	if (!ini.LoadedFromData())
 	{
-		if (!file.read(ini))
+		debug(LOG_INFO, "Could not read existing configuration file \"%s\"", fileName);
+	}
+
+	auto& iniGeneral = ini.GetSection("General");
+
+	debug(LOG_WZ, "Reloading mp config");
+
+	auto iniSetFromCString = [&iniGeneral](const std::string& key, const char* value, size_t maxLength) {
+		std::string strVal;
+		if (value)
 		{
-			debug(LOG_INFO, "Could not read existing configuration file \"%s\"", fileName);
+			size_t len = strnlen(value, maxLength);
+			ASSERT(len < maxLength, "Input c-string value (for key: %s) appears to be missing null-terminator?", key.c_str());
+			strVal.assign(value, len);
 		}
-	}
-	catch (const std::exception& e)
-	{
-		debug(LOG_ERROR, "Ini read failed with exception: %s", e.what());
-		return false;
-	}
-
-	auto& iniGeneral = ini["General"];
-
-	debug(LOG_WZ, "Reloading prefs prefs to registry");
+		iniGeneral.SetString(key, strVal);
+	};
 
 	// If we're in-game, we already have our own configuration set, so no need to reload it.
 	if (NetPlay.isHost && !ingame.localJoiningInProgress)
@@ -875,7 +993,7 @@ bool reloadMPConfig()
 	{
 		if (bMultiPlayer && NetPlay.bComms)
 		{
-			iniGeneral["gameName"] = std::string(game.name);			//  last hosted game
+			iniSetFromCString("gameName", game.name, 128);			//  last hosted game
 		}
 		else
 		{
@@ -897,7 +1015,7 @@ bool reloadMPConfig()
 		iniSectionSetInteger(iniGeneral, "alliance", game.alliance);		// allow alliances
 
 		// write out ini file changes
-		bool result = saveIniFile(file, ini);
+		bool result = saveIniFile(fileName, ini);
 		return result;
 	}
 
@@ -920,6 +1038,10 @@ bool reloadMPConfig()
 	game.inactivityMinutes = war_getMPInactivityMinutes();
 	game.gameTimeLimitMinutes = war_getMPGameTimeLimitMinutes();
 	game.playerLeaveMode = war_getMPPlayerLeaveMode();
+	game.blindMode = BLIND_MODE::NONE;
+
+	// restore group menus enabled setting (as tutorial may override it)
+	setGroupButtonEnabled(war_getGroupsMenuEnabled());
 
 	return true;
 }

@@ -38,6 +38,8 @@
 
 TableRow::TableRow()
 : W_BUTTON()
+, highlightColor(WZCOL_TRANSPARENT_BOX)
+, disabledColor(WZCOL_FORM_DISABLE)
 {
 	AudioCallback = nullptr;
 }
@@ -89,6 +91,34 @@ void TableRow::setHighlightsOnMouseOver(bool value)
 	highlightsOnMouseOver = value;
 }
 
+void TableRow::setHighlightColor(PIELIGHT newHighlightColor)
+{
+	highlightColor = newHighlightColor;
+}
+
+void TableRow::setDrawBorder(optional<PIELIGHT> newBorderColor)
+{
+	borderColor = newBorderColor;
+}
+
+void TableRow::setBackgroundColor(optional<PIELIGHT> newBackgroundColor)
+{
+	backgroundColor = newBackgroundColor;
+}
+
+// Set whether row is "disabled"
+void TableRow::setDisabled(bool disabled)
+{
+	disabledRow = disabled;
+	W_BUTTON::setState((disabled) ? WBUT_DISABLE : 0);
+}
+
+// Set row disable overlay color
+void TableRow::setDisabledColor(PIELIGHT newDisabledColor)
+{
+	disabledColor = newDisabledColor;
+}
+
 int32_t TableRow::getColumnTotalContentIdealWidth()
 {
 	int32_t totalContentIdealWidth = 0;
@@ -101,21 +131,67 @@ int32_t TableRow::getColumnTotalContentIdealWidth()
 
 void TableRow::display(int xOffset, int yOffset)
 {
-	if (!highlightsOnMouseOver || !isMouseOverRowOrChildren()) { return; }
 	int x0 = x() + xOffset;
 	int y0 = y() + yOffset;
 	int x1 = x0 + width();
 	int y1 = y0 + height();
-	iV_TransBoxFill(x0, y0, x1, y1);
+
+	if (highlightsOnMouseOver && isMouseOverRowOrChildren() && !disabledRow)
+	{
+		pie_UniTransBoxFill(x0, y0, x1, y1, highlightColor);
+	}
+	else if (backgroundColor.has_value())
+	{
+		pie_UniTransBoxFill(x0, y0, x1, y1, backgroundColor.value());
+	}
+
+	if (borderColor.has_value())
+	{
+		iV_Box(x0, y0, x1, y1, borderColor.value());
+	}
 }
 
-bool TableRow::processClickRecursive(W_CONTEXT *psContext, WIDGET_KEY key, bool wasPressed)
+void TableRow::displayRecursive(WidgetGraphicsContext const& context)
 {
-	// if processClickRecursive was called for this row, it means the mouse is over it
-	// (see WIDGET::processClickRecursive)
+	WIDGET::displayRecursive(context);
+
+	// *after* displaying all children, draw the disabled overlay (if needed)
+	if (!disabledRow)
+	{
+		return;
+	}
+
+	if (!context.clipContains(geometry())) {
+		return;
+	}
+
+	int xOffset = context.getXOffset();
+	int yOffset = context.getYOffset();
+
+	int x0 = x() + xOffset;
+	int y0 = y() + yOffset;
+
+	pie_UniTransBoxFill(x0, y0, x0 + width(), y0 + height(), disabledColor);
+}
+
+bool TableRow::hitTest(int x, int y) const
+{
+	if (x >= maxDisplayedColumnX1) { return false; }
+	return W_BUTTON::hitTest(x, y);
+}
+
+std::shared_ptr<WIDGET> TableRow::findMouseTargetRecursive(W_CONTEXT *psContext, WIDGET_KEY key, bool wasPressed)
+{
+	// if findMouseTargetRecursive was called for this row, it means the mouse is over it
+	// (see WIDGET::findMouseTargetRecursive)
 	lastFrameMouseIsOverRowOrChildren = frameGetFrameNumber();
 
-	return WIDGET::processClickRecursive(psContext, key, wasPressed);
+
+	if (disabledRow)
+	{
+		return shared_from_this();
+	}
+	return WIDGET::findMouseTargetRecursive(psContext, key, wasPressed);
 }
 
 bool TableRow::isMouseOverRowOrChildren() const
@@ -138,6 +214,7 @@ void TableRow::resizeColumns(const std::vector<size_t>& newColumnWidths, int col
 		columnWidgets[colIdx]->show();
 		lastColumnEndX = (columnWidgets[colIdx]->x() + columnWidgets[colIdx]->width());
 	}
+	maxDisplayedColumnX1 = lastColumnEndX;
 	// hide any additional column widgets
 	for (; colIdx < columnWidgets.size(); colIdx++)
 	{
@@ -165,17 +242,21 @@ protected:
 	virtual void released(W_CONTEXT *, WIDGET_KEY) override;
 	virtual void run(W_CONTEXT *psContext) override;
 	virtual void geometryChanged() override;
+	virtual bool capturesMouseDrag(WIDGET_KEY) override;
+	virtual void mouseDragged(WIDGET_KEY, W_CONTEXT *start, W_CONTEXT *current) override;
 
 public:
 	void addColumn(const TableColumn& column);
 	void changeColumnWidths(const std::vector<size_t>& newColumnWidths);
 	bool isUserDraggingColumnHeader() const;
+	void setColumnPadding(Vector2i padding);
 
 private:
 	int columnWidgetHeight() const;
 
 private:
 	bool userResizableHeaders = true;
+	Vector2i columnPadding;
 	std::vector<TableColumn> columns;
 	optional<size_t> colBeingResized = nullopt;
 	optional<Vector2i> dragStart = nullopt;
@@ -187,17 +268,18 @@ TableHeader::TableHeader(const std::shared_ptr<ScrollableTableWidget>& _parentTa
 {
 	ASSERT(_parentTable != nullptr, "Null parent table");
 	parentTable = _parentTable;
+	columnPadding = _parentTable->getColumnPadding();
 }
 
 void TableHeader::addColumn(const TableColumn& column)
 {
 	attach(column.columnWidget);
 	// Position it to the right of the prior column (child)
-	int columnX = TABLE_COL_PADDING;
+	int columnX = columnPadding.x;
 	int colHeaderY = 0;
 	if (columns.size() > 0)
 	{
-		columnX += columns.back().columnWidget->x() + columns.back().columnWidget->width() + TABLE_COL_PADDING;
+		columnX += columns.back().columnWidget->x() + columns.back().columnWidget->width() + columnPadding.x;
 	}
 	column.columnWidget->setGeometry(columnX, colHeaderY, column.columnWidget->width(), columnWidgetHeight());
 
@@ -217,22 +299,34 @@ void TableHeader::display(int xOffset, int yOffset)
 	for (auto& child : columns)
 	{
 		// column lines
-		int xPos = x0 + child.columnWidget->x() + child.columnWidget->width() + TABLE_COL_PADDING;
+		int xPos = x0 + child.columnWidget->x() + child.columnWidget->width() + columnPadding.x;
 		iV_Line(xPos, y0 + 5, xPos, y1 - 5, WZCOL_MENU_SEPARATOR);
 	}
 }
 
-void TableHeader::clicked(W_CONTEXT *psContext, WIDGET_KEY key)
+bool TableHeader::capturesMouseDrag(WIDGET_KEY)
 {
-	if (userResizableHeaders && key == WKEY_PRIMARY && !columns.empty())
+	return userResizableHeaders;
+}
+
+void TableHeader::mouseDragged(WIDGET_KEY key, W_CONTEXT *start, W_CONTEXT *current)
+{
+	if (!userResizableHeaders || key != WKEY_PRIMARY || columns.empty())
 	{
+		return;
+	}
+
+	if (!dragStart.has_value())
+	{
+		dragStart = Vector2i(start->mx, start->my);
+
 		// determine the column that is being resized
 		colBeingResized = nullopt;
 		for (size_t colIdx = columns.size() - 1; /* termination handled in loop body */; colIdx--)
 		{
 			auto& columnWidget = columns[colIdx].columnWidget;
 			int col_x1 = columnWidget->x() + columnWidget->width();
-			if (psContext->mx > col_x1)
+			if (start->mx > col_x1)
 			{
 				if (columns[colIdx].resizeBehavior != TableColumn::ResizeBehavior::FIXED_WIDTH)
 				{
@@ -246,13 +340,36 @@ void TableHeader::clicked(W_CONTEXT *psContext, WIDGET_KEY key)
 			}
 		}
 		if (!colBeingResized.has_value()) { return; }
-		dragStart = Vector2i(psContext->mx, psContext->my);
 	}
+
+	if (dragStart.has_value() && colBeingResized.has_value())
+	{
+		// handle column resize while dragging
+		Vector2i currentMousePos(current->mx, current->my);
+		Vector2i dragDelta(currentMousePos.x - dragStart.value().x, currentMousePos.y - dragStart.value().y);
+
+		int priorColumnWidth = columns[colBeingResized.value()].columnWidget->width();
+		size_t newProposedColumnWidth = static_cast<size_t>(std::max<int>(priorColumnWidth + dragDelta.x, 0));
+		if (auto table = parentTable.lock())
+		{
+			auto result = table->header_changeColumnWidth(colBeingResized.value(), static_cast<size_t>(newProposedColumnWidth));
+			if (result.has_value())
+			{
+				Vector2i currentDragLogicalPos = dragStart.value();
+				currentDragLogicalPos.x += (static_cast<int>(result.value()) - priorColumnWidth);
+				dragStart = currentDragLogicalPos;
+			}
+		}
+	}
+}
+
+void TableHeader::clicked(W_CONTEXT *psContext, WIDGET_KEY key)
+{
+	// currently, no-op
 }
 
 void TableHeader::released(W_CONTEXT *, WIDGET_KEY)
 {
-	if (!userResizableHeaders || !dragStart.has_value()) { return; }
 	colBeingResized = nullopt;
 	dragStart = nullopt;
 }
@@ -262,34 +379,28 @@ bool TableHeader::isUserDraggingColumnHeader() const
 	return userResizableHeaders && dragStart.has_value();
 }
 
+void TableHeader::setColumnPadding(Vector2i padding)
+{
+	columnPadding = padding;
+
+	// Reposition all column widgets
+	int lastColumnX = columnPadding.x;
+	for (size_t columnIdx = 0; columnIdx < columns.size(); ++columnIdx)
+	{
+		// Position it to the right of the prior column (child)
+		int columnX = lastColumnX;
+		int colHeaderY = 0;
+		if (columnIdx > 0)
+		{
+			columnX += columns[columnIdx-1].columnWidget->x() + columns[columnIdx-1].columnWidget->width() + columnPadding.x;
+		}
+		columns[columnIdx].columnWidget->setGeometry(columnX, colHeaderY, columns[columnIdx].columnWidget->width(), columnWidgetHeight());
+	}
+}
+
 void TableHeader::run(W_CONTEXT *psContext)
 {
-	if (!userResizableHeaders || !dragStart.has_value()) { return; }
-
-	/* If the mouse is released *anywhere*, stop dragging */
-	if (mouseReleased(MOUSE_LMB))
-	{
-		colBeingResized = nullopt;
-		dragStart = nullopt;
-		return;
-	}
-
-	Vector2i currentMousePos(psContext->mx, psContext->my);
-	if (currentMousePos == dragStart.value()) { return; }
-	Vector2i dragDelta(currentMousePos.x - dragStart.value().x, currentMousePos.y - dragStart.value().y);
-
-	int priorColumnWidth = columns[colBeingResized.value()].columnWidget->width();
-	size_t newProposedColumnWidth = static_cast<size_t>(std::max<int>(priorColumnWidth + dragDelta.x, 0));
-	if (auto table = parentTable.lock())
-	{
-		auto result = table->header_changeColumnWidth(colBeingResized.value(), static_cast<size_t>(newProposedColumnWidth));
-		if (result.has_value())
-		{
-			Vector2i currentDragLogicalPos = dragStart.value();
-			currentDragLogicalPos.x += (static_cast<int>(result.value()) - priorColumnWidth);
-			dragStart = currentDragLogicalPos;
-		}
-	}
+	// currently, no-op
 }
 
 void TableHeader::geometryChanged()
@@ -309,19 +420,19 @@ int TableHeader::columnWidgetHeight() const
 
 void TableHeader::changeColumnWidths(const std::vector<size_t>& newColumnWidths)
 {
-	int columnX = TABLE_COL_PADDING;
+	int columnX = columnPadding.x;
 	size_t i = 0;
 	for(; i < std::min(newColumnWidths.size(), columns.size()); i++)
 	{
 		auto& columnWidget = columns[i].columnWidget;
 		columnWidget->setGeometry(columnX, columnWidget->y(), static_cast<int>(newColumnWidths[i]), columnWidget->height());
-		columnX += TABLE_COL_PADDING + columnWidget->width() + TABLE_COL_PADDING;
+		columnX += columnPadding.x + columnWidget->width() + columnPadding.x;
 	}
 	for(; i < columns.size(); i++)
 	{
 		auto& columnWidget = columns[i].columnWidget;
 		columnWidget->setGeometry(columnX, columnWidget->y(), columnWidget->width(), columnWidget->height());
-		columnX += TABLE_COL_PADDING + columnWidget->width() + TABLE_COL_PADDING;
+		columnX += columnPadding.x + columnWidget->width() + columnPadding.x;
 	}
 }
 
@@ -329,6 +440,7 @@ void TableHeader::changeColumnWidths(const std::vector<size_t>& newColumnWidths)
 
 ScrollableTableWidget::ScrollableTableWidget()
 : WIDGET()
+, columnPadding(TABLE_COL_PADDING, 0)
 { }
 
 std::shared_ptr<ScrollableTableWidget> ScrollableTableWidget::make(const std::vector<TableColumn>& columns, int headerHeight /*= -1*/)
@@ -369,7 +481,11 @@ std::shared_ptr<ScrollableTableWidget> ScrollableTableWidget::make(const std::ve
 	result->scrollableList->setCalcLayout(LAMBDA_CALCLAYOUT_SIMPLE({
 		if (auto psParent = std::dynamic_pointer_cast<ScrollableTableWidget>(psWidget->parent()))
 		{
-			int y0 = psParent->header->y() + psParent->header->height();
+			int y0 = 0;
+			if (psParent->header->visible())
+			{
+				y0 = psParent->header->y() + psParent->header->height() + psParent->scrollableList->getItemSpacing();
+			}
 			psWidget->setGeometry(0, y0, psParent->width(), psParent->height() - y0);
 		}
 	}));
@@ -409,7 +525,7 @@ void ScrollableTableWidget::addRow(const std::shared_ptr<TableRow> &row)
 {
 	ASSERT_OR_RETURN(, row != nullptr, "row is null");
 	ASSERT_OR_RETURN(, row->numColumns() == columnWidths.size(), "Unexpected number of columns in row: %zu", row->numColumns());
-	row->resizeColumns(columnWidths, TABLE_COL_PADDING);
+	row->resizeColumns(columnWidths, columnPadding.x);
 	// Add row to internal ScrollableListWidget, and rows list
 	scrollableList->addItem(row);
 	rows.push_back(row);
@@ -419,6 +535,22 @@ void ScrollableTableWidget::clearRows()
 {
 	scrollableList->clear();
 	rows.clear();
+}
+
+void ScrollableTableWidget::setHeaderVisible(bool visible)
+{
+	if (visible == header->visible())
+	{
+		return;
+	}
+	header->show(visible);
+	geometryChanged();
+}
+
+void ScrollableTableWidget::setRowDisabled(size_t row, bool disabled)
+{
+	ASSERT_OR_RETURN(, row < rows.size(), "Invalid row idx: %zu", row);
+	rows[row]->setDisabled(disabled);
 }
 
 bool ScrollableTableWidget::changeColumnWidths(const std::vector<size_t>& newColumnWidths, bool overrideUserColumnResizing /*= false*/)
@@ -515,7 +647,7 @@ void ScrollableTableWidget::updateColumnWidths()
 	header->changeColumnWidths(columnWidths);
 	for (auto& row : rows)
 	{
-		row->resizeColumns(columnWidths, TABLE_COL_PADDING);
+		row->resizeColumns(columnWidths, columnPadding.x);
 	}
 }
 
@@ -638,7 +770,7 @@ size_t ScrollableTableWidget::totalPaddingWidthFor(size_t numColumns) const
 {
 	// TABLE_COL_PADDING is on all sides of all columns
 	// also factor in scrollbar width
-	size_t totalPaddingWidth = TABLE_COL_PADDING + ((numColumns - 1) * 2 * TABLE_COL_PADDING) + TABLE_COL_PADDING + scrollableList->getScrollbarWidth();
+	size_t totalPaddingWidth = columnPadding.x + ((numColumns - 1) * 2 * columnPadding.x) + columnPadding.x + scrollableList->getScrollbarWidth();
 	return totalPaddingWidth;
 }
 
@@ -655,4 +787,71 @@ size_t ScrollableTableWidget::getTableWidthNeededForTotalColumnWidth(size_t numC
 bool ScrollableTableWidget::isUserDraggingColumnHeader() const
 {
 	return header->isUserDraggingColumnHeader();
+}
+
+void ScrollableTableWidget::setColumnPadding(Vector2i newPadding)
+{
+	if (newPadding == columnPadding)
+	{
+		return;
+	}
+	columnPadding = newPadding;
+
+	// Need to inform header + resize columns and also resize columns in list
+	header->setColumnPadding(newPadding);
+	updateColumnWidths();
+}
+
+const Vector2i& ScrollableTableWidget::getColumnPadding()
+{
+	return columnPadding;
+}
+
+void ScrollableTableWidget::setDrawColumnLines(bool bEnabled)
+{
+	drawColumnLines = bEnabled;
+}
+
+void ScrollableTableWidget::setItemSpacing(uint32_t value)
+{
+	scrollableList->setItemSpacing(value);
+}
+
+void ScrollableTableWidget::displayRecursive(WidgetGraphicsContext const& context)
+{
+	WIDGET::displayRecursive(context);
+
+	// *after* displaying all children, draw the column lines (if desired)
+	if (!drawColumnLines)
+	{
+		return;
+	}
+
+	if (!context.clipContains(geometry())) {
+		return;
+	}
+
+	int xOffset = context.getXOffset();
+	int yOffset = context.getYOffset();
+
+	int x0 = x() + xOffset;
+	int y0 = y() + yOffset + scrollableList->y();
+	int y1 = y0 + scrollableList->height();
+
+	lines.clear();
+	lines.reserve(columnWidths.size());
+
+	// draw a line between every column widget
+	int lastColumnEndX = -columnPadding.x;
+	for (size_t colIdx = 0; colIdx < columnWidths.size(); ++colIdx)
+	{
+		// column lines
+		int columnXPos = lastColumnEndX + columnPadding.x + columnPadding.x;
+		int columRightLineXPos = columnXPos + static_cast<int>(columnWidths[colIdx]) + columnPadding.x;
+
+		lines.emplace_back(x0 + columRightLineXPos, y0, x0 + columRightLineXPos, y1);
+		lastColumnEndX = columnXPos + static_cast<int>(columnWidths[colIdx]);
+	}
+
+	iV_Lines(lines, WZCOL_MENU_SEPARATOR);
 }

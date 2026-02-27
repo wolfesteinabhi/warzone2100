@@ -23,6 +23,7 @@
 
 #include <functional>
 #include <memory>
+#include "lib/ivis_opengl/pietypes.h"
 
 #define MAX_CONSOLE_MESSAGES			(64)
 #define MAX_CONSOLE_STRING_LENGTH		(255)
@@ -60,7 +61,6 @@ const DEBOUNCED_MESSAGE CANNOT_BUILD_BURNING = {2500};
 #define	SYSTEM_MESSAGE				(-1)
 #define NOTIFY_MESSAGE				(-2)	// mainly used for lobby & error messages
 #define INFO_MESSAGE				(-3)	// This type is not stored, it is used for simple messages
-#define SPECTATOR_MESSAGE			(-4)	// Used for in-game spectator messages (NET_SPECTEXTMSG)
 
 #define MAX_CONSOLE_MESSAGE_DURATION	((UDWORD)-1)
 #define DEFAULT_CONSOLE_MESSAGE_DURATION	0
@@ -91,6 +91,7 @@ void permitNewConsoleMessages(bool allow);
 void toggleConsoleDrop();
 void setHistoryMode(bool mode);
 void clearInfoMessages();
+PIELIGHT getConsoleTextColor(int player);
 
 typedef std::function<void(ConsoleMessage const &)> CONSOLE_MESSAGE_LISTENER;
 void consoleAddMessageListener(const std::shared_ptr<CONSOLE_MESSAGE_LISTENER>& listener);
@@ -103,7 +104,7 @@ void consoleRemoveMessageListener(const std::shared_ptr<CONSOLE_MESSAGE_LISTENER
 # define debug_console(...) (void)0
 #endif // !defined(DEBUG)
 
-void console(const char *pFormat, ...); /// Print always to the ingame console
+void console(const char *pFormat, ...) WZ_DECL_FORMAT(WZ_PRINTF_FORMAT, 1, 2); /// Print always to the ingame console
 
 /**
  Usage:
@@ -114,12 +115,22 @@ void console(const char *pFormat, ...); /// Print always to the ingame console
  eg.
 	CONPRINTF("Hello %d", 123);
 */
+
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wgcc-compat"
+#endif
+
 template <typename... P>
-static inline void CONPRINTF(P &&... params)
+static inline void CONPRINTF(char const *format, P &&... params) WZ_DECL_FORMAT_CXX(WZ_PRINTF_FORMAT, 1, 2)
 {
-	snprintf(ConsoleString, sizeof(ConsoleString), std::forward<P>(params)...);
+	snprintf(ConsoleString, sizeof(ConsoleString), format, std::forward<P>(params)...);
 	addConsoleMessage(ConsoleString, DEFAULT_JUSTIFY, INFO_MESSAGE);
 }
+
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 
 #include <functional>

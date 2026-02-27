@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5...3.24)
+cmake_minimum_required(VERSION 3.16...3.31)
 
 set(_OLD_CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH}")
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
@@ -8,27 +8,30 @@ unset(_OLD_CMAKE_MODULE_PATH)
 
 project(warzone2100)
 
-if(${CMAKE_VERSION} VERSION_LESS 3.12)
-    cmake_policy(VERSION ${CMAKE_MAJOR_VERSION}.${CMAKE_MINOR_VERSION})
-endif()
-
 include(CMakeDependentOption)
 
-OPTION(ENABLE_DOCS "Enable documentation generation" ON)
-OPTION(ENABLE_NLS "Native Language Support" ON)
 OPTION(WZ_ENABLE_WARNINGS "Enable (additional) warnings" OFF)
 OPTION(WZ_ENABLE_WARNINGS_AS_ERRORS "Enable compiler flags that treat (most) warnings as errors" ON)
-OPTION(WZ_ENABLE_BACKEND_VULKAN "Enable Vulkan backend" ON)
 OPTION(WZ_ENABLE_BASIS_UNIVERSAL "Enable Basis Universal texture support" ON)
 OPTION(WZ_DEBUG_GFX_API_LEAKS "Enable debugging for graphics API leaks" ON)
 OPTION(WZ_FORCE_MINIMAL_OPUSFILE "Force a minimal build of Opusfile, since WZ does not need (or want) HTTP stream support" ON)
+OPTION(ENABLE_NLS "Native Language Support" ON)
+if(NOT CMAKE_SYSTEM_NAME MATCHES "Emscripten")
+	OPTION(ENABLE_DOCS "Enable documentation generation" ON)
+	OPTION(WZ_ENABLE_BACKEND_VULKAN "Enable Vulkan backend" ON)
+	set(WZ_USE_STACK_PROTECTION ON CACHE BOOL "Use Stack Protection hardening." FORCE)
+else()
+	set(WZ_SKIP_ADDITIONAL_FONTS ON CACHE BOOL "Skip additional fonts (used to display CJK glyphs)" FORCE)
+	set(WZ_USE_STACK_PROTECTION OFF CACHE BOOL "Use Stack Protection hardening." FORCE)
+	OPTION(WZ_EMSCRIPTEN_COMPRESS_OUTPUT "Compress Emscripten output (generate .gz files)" ON)
+endif()
 
 # Dev options
 OPTION(WZ_PROFILING_NVTX "Add NVTX-based profiling instrumentation to the code" OFF)
 
 if(CMAKE_SYSTEM_NAME MATCHES "Windows" OR CMAKE_SYSTEM_NAME MATCHES "Darwin" OR CMAKE_SYSTEM_NAME MATCHES "Linux")
-	# Only supported on Windows, macOS, and Linux
-	OPTION(ENABLE_DISCORD "Enable Discord presence / join integration" ON)
+	# Only supported on Windows, macOS, and Linux - requires additional configuration, so off by default
+	OPTION(ENABLE_DISCORD "Enable Discord presence / join integration" OFF)
 endif()
 
 set(WZ_DISTRIBUTOR "UNKNOWN" CACHE STRING "Name of distributor compiling this package")
@@ -57,7 +60,7 @@ else()
 endif()
 
 # CXX Standard
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF) # Disable compiler-specific extensions
 
@@ -93,6 +96,12 @@ if(NOT DEFINED WZ_DATADIR)
 		set(WZ_DATADIR "${CMAKE_INSTALL_DATAROOTDIR}/warzone2100${WZ_OUTPUT_NAME_SUFFIX}")
 	endif()
 endif()
+if(NOT DEFINED WZ_LOCALEDIR)
+	set(WZ_LOCALEDIR "${CMAKE_INSTALL_LOCALEDIR}")
+	if(CMAKE_SYSTEM_NAME MATCHES "Emscripten")
+		set(WZ_LOCALEDIR "/share/locale")
+	endif()
+endif()
 if(CMAKE_SYSTEM_NAME MATCHES "Windows")
 	if(NOT CMAKE_INSTALL_BINDIR STREQUAL "bin")
 		# Windows builds expect a non-empty BINDIR
@@ -118,7 +127,7 @@ endif()
 
 if(CMAKE_SYSTEM_NAME MATCHES "Darwin")
 	# Enable macOS-specific find scripts
-	list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/macosx/cmake")
+	list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/platforms/macos/cmake")
 
 	# Workaround for framework header conflicts with find_package
 	# - Common issue when Mono.framework is installed, since it contains headers for libpng (etc)
@@ -133,20 +142,77 @@ if(CMAKE_HOST_SYSTEM_NAME MATCHES "Darwin")
 	list(APPEND CMAKE_PREFIX_PATH "/usr/local/opt/gettext")
 endif()
 
+if(CMAKE_SYSTEM_NAME MATCHES "Emscripten")
+	# Check minimum Emscripten version
+	if (NOT "${EMSCRIPTEN_VERSION}" VERSION_GREATER 3.1.57)
+		message(FATAL_ERROR "Emscripten version must be at least 3.1.58")
+	endif()
+
+	# For Emscripten, we must currently get the following packages from Emscripten ports:
+	#	- SDL2 # NOT FOR NOW - must use vcpkg port as it has custom patches
+	#	- Freetype
+	#	- Harfbuzz
+	# We must also specify:
+	#	- Pthread support
+	#	- Exception support
+	#	- WebGL 2.0 support [LINK - see src/CMakeLists.txt]
+	#	- Fetch API [LINK - see src/CMakeLists.txt]
+
+	set(COMP_AND_LINK_FLAGS "-fwasm-exceptions")
+	if ("${EMSCRIPTEN_VERSION}" VERSION_GREATER_EQUAL 4.0.0)
+		set(COMP_AND_LINK_FLAGS "${COMP_AND_LINK_FLAGS} -sWASM_LEGACY_EXCEPTIONS")
+	endif()
+	if (WZ_EMSCRIPTEN_ENABLE_ASAN)
+		set(COMP_AND_LINK_FLAGS "${COMP_AND_LINK_FLAGS} -fsanitize=address -fsanitize-recover=address")
+	endif()
+	set(USE_FLAGS "-pthread --use-port=freetype --use-port=harfbuzz")
+
+	# Set various flags and executable settings
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${COMP_AND_LINK_FLAGS} ${USE_FLAGS}")
+	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${COMP_AND_LINK_FLAGS} ${USE_FLAGS}")
+	set(CMAKE_EXECUTABLE_SUFFIX .html)
+
+	# -fwasm-exceptions must be passed to linker as well
+	add_link_options(
+		"$<$<LINK_LANGUAGE:CXX,C>:-fwasm-exceptions>"
+	)
+	if ("${EMSCRIPTEN_VERSION}" VERSION_GREATER_EQUAL 4.0.0)
+		add_link_options(
+			"$<$<LINK_LANGUAGE:CXX,C>:-sWASM_LEGACY_EXCEPTIONS>"
+		)
+	endif()
+	if (WZ_EMSCRIPTEN_ENABLE_ASAN)
+		add_link_options(
+			"$<$<LINK_LANGUAGE:CXX,C>:-fsanitize=address>"
+			"$<$<LINK_LANGUAGE:CXX,C>:-fsanitize-recover=address>"
+		)
+	endif()
+
+	# enable separate-dwarf debug info for Debug/RelWithDebInfo builds
+	set(debug_builds_only "$<OR:$<CONFIG:DEBUG>,$<CONFIG:RELWITHDEBINFO>>")
+	add_compile_options(
+		"$<$<AND:$<COMPILE_LANGUAGE:CXX,C>,${debug_builds_only}>:-gseparate-dwarf>"
+	)
+	add_link_options(
+		"$<$<AND:$<LINK_LANGUAGE:CXX,C>,${debug_builds_only}>:-gseparate-dwarf>"
+	)
+	if (WZ_EMSCRIPTEN_ENABLE_ASAN)
+		add_compile_options(
+			#"$<$<AND:$<COMPILE_LANGUAGE:CXX,C>,${debug_builds_only}>:-gsource-map>"
+		)
+		add_link_options(
+			#"$<$<AND:$<LINK_LANGUAGE:CXX,C>,${debug_builds_only}>:-gsource-map>"
+		)
+	endif()
+
+	# Ensure FindThreads.cmake works
+	set(THREADS_PREFER_PTHREAD_FLAG ON)
+endif()
+
 INCLUDE(AddTargetLinkFlagsIfSupported)
 
 # Use "-fPIC" / "-fPIE" for all targets by default, including static libs
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-
-if (CMAKE_VERSION VERSION_LESS 3.14)
-	# CMake < 3.14 doesn't add "-pie" by default for executables (CMake issue #14983)
-	CHECK_CXX_LINKER_FLAGS("${CMAKE_EXE_LINKER_FLAGS} -pie" LINK_FLAG_PIE_SUPPORTED)
-	if(LINK_FLAG_PIE_SUPPORTED AND NOT CMAKE_SYSTEM_NAME MATCHES "Windows" AND NOT CMAKE_SYSTEM_NAME MATCHES "Darwin")
-		set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -pie")
-	endif()
-elseif(POLICY CMP0083)
-	cmake_policy(SET CMP0083 NEW) # Apply -pie link flag if supported
-endif()
 
 set(WZ_WIN_HAS_PDB FALSE)
 if("${CMAKE_CXX_COMPILER_ID}" MATCHES "MSVC")
@@ -163,8 +229,14 @@ if("${CMAKE_CXX_COMPILER_ID}" MATCHES "MSVC")
 
 	# Default stack size is 1MB - increase to better match other platforms
 	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /STACK:8000000")
-elseif("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU|Clang" AND NOT APPLE)
-	# Ensure all builds always have debug info built (Xcode is handled separately below)
+
+	# Enable multithreaded compilation by default
+	option(WZ_MSVC_MULTITHREADED_COMPILATION "Controls multithreaded compilation for MSVC builds" ON)
+	if(WZ_MSVC_MULTITHREADED_COMPILATION)
+		add_compile_options("/MP")
+	endif()
+elseif("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU|Clang" AND NOT APPLE AND NOT CMAKE_SYSTEM_NAME MATCHES "Emscripten")
+	# Ensure all builds always have debug info built (Xcode is handled separately below, Emscripten handled above)
 	set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -g")
 	# Ensure symbols can be demangled on Linux Debug builds
 	set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -rdynamic")
@@ -199,34 +271,36 @@ endif()
 include(CheckCCompilerFlag)
 include(CheckCXXCompilerFlag)
 
-# Enable stack protection, if supported by the compiler
-# Prefer -fstack-protector-strong if supported, fall-back to -fstack-protector
-check_c_compiler_flag(-fstack-protector-strong HAS_CFLAG_FSTACK_PROTECTOR_STRONG)
-if (HAS_CFLAG_FSTACK_PROTECTOR_STRONG)
-	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fstack-protector-strong")
-else()
-	check_c_compiler_flag(-fstack-protector HAS_CFLAG_FSTACK_PROTECTOR)
-	if (HAS_CFLAG_FSTACK_PROTECTOR)
-		set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fstack-protector")
+if (WZ_USE_STACK_PROTECTION)
+	# Enable stack protection, if supported by the compiler
+	# Prefer -fstack-protector-strong if supported, fall-back to -fstack-protector
+	check_c_compiler_flag(-fstack-protector-strong HAS_CFLAG_FSTACK_PROTECTOR_STRONG)
+	if (HAS_CFLAG_FSTACK_PROTECTOR_STRONG)
+		set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fstack-protector-strong")
+	else()
+		check_c_compiler_flag(-fstack-protector HAS_CFLAG_FSTACK_PROTECTOR)
+		if (HAS_CFLAG_FSTACK_PROTECTOR)
+			set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fstack-protector")
+		endif()
 	endif()
-endif()
-check_cxx_compiler_flag(-fstack-protector-strong HAS_CXXFLAG_FSTACK_PROTECTOR_STRONG)
-if (HAS_CXXFLAG_FSTACK_PROTECTOR_STRONG)
-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-strong")
-else()
-	check_cxx_compiler_flag(-fstack-protector HAS_CXXFLAG_FSTACK_PROTECTOR)
-	if (HAS_CXXFLAG_FSTACK_PROTECTOR)
-		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector")
+	check_cxx_compiler_flag(-fstack-protector-strong HAS_CXXFLAG_FSTACK_PROTECTOR_STRONG)
+	if (HAS_CXXFLAG_FSTACK_PROTECTOR_STRONG)
+		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-strong")
+	else()
+		check_cxx_compiler_flag(-fstack-protector HAS_CXXFLAG_FSTACK_PROTECTOR)
+		if (HAS_CXXFLAG_FSTACK_PROTECTOR)
+			set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector")
+		endif()
 	endif()
-endif()
-# Enable -fstack-clash-protection if available
-check_c_compiler_flag(-fstack-clash-protection HAS_CFLAG_FSTACK_CLASH_PROTECTION)
-if (HAS_CFLAG_FSTACK_CLASH_PROTECTION AND NOT (MINGW OR APPLE))
-	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fstack-clash-protection")
-endif()
-check_cxx_compiler_flag(-fstack-clash-protection HAS_CXXFLAG_FSTACK_CLASH_PROTECTION)
-if (HAS_CXXFLAG_FSTACK_CLASH_PROTECTION AND NOT (MINGW OR APPLE))
-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-clash-protection")
+	# Enable -fstack-clash-protection if available
+	check_c_compiler_flag(-fstack-clash-protection HAS_CFLAG_FSTACK_CLASH_PROTECTION)
+	if (HAS_CFLAG_FSTACK_CLASH_PROTECTION AND NOT (MINGW OR APPLE))
+		set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fstack-clash-protection")
+	endif()
+	check_cxx_compiler_flag(-fstack-clash-protection HAS_CXXFLAG_FSTACK_CLASH_PROTECTION)
+	if (HAS_CXXFLAG_FSTACK_CLASH_PROTECTION AND NOT (MINGW OR APPLE))
+		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-clash-protection")
+	endif()
 endif()
 
 include(CheckCompilerFlagsOutput)
@@ -353,17 +427,21 @@ macro(CONFIGURE_WZ_COMPILER_WARNINGS)
 		# Apple LLVM - Code Generation
 		set(CMAKE_XCODE_ATTRIBUTE_GCC_NO_COMMON_BLOCKS YES)							# -fno-common
 
+		# Custom CFLAGS
+		list(APPEND WZ_TARGET_ADDITIONAL_C_BUILD_FLAGS -fno-math-errno -fno-trapping-math)
+		list(APPEND WZ_TARGET_ADDITIONAL_CXX_BUILD_FLAGS -fno-math-errno -fno-trapping-math)
+
 		# Apple Clang - Custom Compiler Flags
 		# Custom Warning Flags (for which an Xcode attribute is not available)
-		set(CMAKE_XCODE_ATTRIBUTE_WARNING_CFLAGS "-Wall -Wextra -Wcast-align -Wwrite-strings -Wpointer-arith")
+		set(wz_target_only_XCODE_ATTRIBUTE_WARNING_CFLAGS "-Wall -Wextra -Wcast-align -Wwrite-strings -Wpointer-arith")
 
 		# Custom Disabling Warning Flags (which are required because of warning flags specified above
 		# and by CMake's Xcode project generator)
-		set(CMAKE_XCODE_ATTRIBUTE_WARNING_CFLAGS "${CMAKE_XCODE_ATTRIBUTE_WARNING_CFLAGS} -Wno-sign-compare")
-		set(CMAKE_XCODE_ATTRIBUTE_WARNING_CFLAGS "${CMAKE_XCODE_ATTRIBUTE_WARNING_CFLAGS} -Wno-unused-parameter")
+		set(wz_target_only_XCODE_ATTRIBUTE_WARNING_CFLAGS "${wz_target_only_XCODE_ATTRIBUTE_WARNING_CFLAGS} -Wno-sign-compare")
+		set(wz_target_only_XCODE_ATTRIBUTE_WARNING_CFLAGS "${wz_target_only_XCODE_ATTRIBUTE_WARNING_CFLAGS} -Wno-unused-parameter")
 
 		# Custom Warning Flags - No Error Tweaks
-		set(CMAKE_XCODE_ATTRIBUTE_WARNING_CFLAGS "${CMAKE_XCODE_ATTRIBUTE_WARNING_CFLAGS} -Wno-error=deprecated-declarations")
+		set(wz_target_only_XCODE_ATTRIBUTE_WARNING_CFLAGS "${wz_target_only_XCODE_ATTRIBUTE_WARNING_CFLAGS} -Wno-error=deprecated-declarations")
 
 		set(_supported_cxx_compiler_flags "")
 
@@ -371,7 +449,9 @@ macro(CONFIGURE_WZ_COMPILER_WARNINGS)
 		check_compiler_flags_output("-Werror -Wno-shadow-field-in-constructor -Wno-error=cpp" COMPILER_TYPE CXX OUTPUT_FLAGS "-Wno-shadow-field-in-constructor" OUTPUT_VARIABLE _supported_cxx_compiler_flags APPEND)
 
 		message( STATUS "Supported additional CXX compiler_flags=${_supported_cxx_compiler_flags}" )
-		set(CMAKE_XCODE_ATTRIBUTE_WARNING_CFLAGS "${CMAKE_XCODE_ATTRIBUTE_WARNING_CFLAGS} ${_supported_cxx_compiler_flags}")
+		set(wz_target_only_XCODE_ATTRIBUTE_WARNING_CFLAGS "${wz_target_only_XCODE_ATTRIBUTE_WARNING_CFLAGS} ${_supported_cxx_compiler_flags}")
+
+		list(APPEND WZ_TARGET_ADDITIONAL_PROPERTIES XCODE_ATTRIBUTE_WARNING_CFLAGS "${wz_target_only_XCODE_ATTRIBUTE_WARNING_CFLAGS}")
 
 		# Apple Clang - Preprocessing
 		set(CMAKE_XCODE_ATTRIBUTE_ENABLE_STRICT_OBJC_MSGSEND YES)
@@ -455,6 +535,11 @@ macro(CONFIGURE_WZ_COMPILER_WARNINGS)
 		set(CMAKE_XCODE_ATTRIBUTE_CLANG_WARN_OBJC_REPEATED_USE_OF_WEAK YES)			# -Warc-repeated-use-of-weak
 		set(CMAKE_XCODE_ATTRIBUTE_CLANG_WARN__ARC_BRIDGE_CAST_NONARC YES)			# -Warc-bridge-casts-disallowed-in-nonarc
 
+	elseif(CMAKE_SYSTEM_NAME MATCHES "Emscripten")
+
+		list(APPEND WZ_TARGET_ADDITIONAL_C_BUILD_FLAGS -fno-common -fno-math-errno -fno-trapping-math -fno-rounding-math -ffp-model=precise)
+		list(APPEND WZ_TARGET_ADDITIONAL_CXX_BUILD_FLAGS -fno-common -fno-math-errno -fno-trapping-math -fno-rounding-math -ffp-model=precise)
+
 	else()
 		# GCC, Clang, etc
 		# Comments are provided next to each warning option detailing expected compiler support (from GCC 3.4+, Clang 3.2+ - earlier versions may / may not support these options)
@@ -481,6 +566,10 @@ macro(CONFIGURE_WZ_COMPILER_WARNINGS)
 		# Enable -fno-math-errno (if supported)
 		check_compiler_flags_output("-Werror -fno-math-errno -Wno-error=cpp" COMPILER_TYPE C   OUTPUT_FLAGS "-fno-math-errno" OUTPUT_VARIABLE _supported_c_compiler_flags APPEND)
 		check_compiler_flags_output("-Werror -fno-math-errno -Wno-error=cpp" COMPILER_TYPE CXX OUTPUT_FLAGS "-fno-math-errno" OUTPUT_VARIABLE _supported_cxx_compiler_flags APPEND)
+
+		# Enable -fno-trapping-math (if supported)
+		check_compiler_flags_output("-Werror -fno-trapping-math -Wno-error=cpp" COMPILER_TYPE C   OUTPUT_FLAGS "-fno-trapping-math" OUTPUT_VARIABLE _supported_c_compiler_flags APPEND)
+		check_compiler_flags_output("-Werror -fno-trapping-math -Wno-error=cpp" COMPILER_TYPE CXX OUTPUT_FLAGS "-fno-trapping-math" OUTPUT_VARIABLE _supported_cxx_compiler_flags APPEND)
 
 		# -Wcast-align				(GCC 3.4+, Clang 3.2+)
 		check_compiler_flags_output("-Werror -Wcast-align -Wno-error=cpp" COMPILER_TYPE C   OUTPUT_FLAGS "-Wcast-align" OUTPUT_VARIABLE _supported_c_compiler_flags APPEND)
@@ -546,7 +635,7 @@ macro(CONFIGURE_WZ_COMPILER_WARNINGS)
 
 		# -Wshadow					(GCC 3.4+, Clang 3.2+)
 		# NOTE: -Wshadow on GCC is currently too noisy, but Clang 3.9+ is much more selective
-		if (CMAKE_C_COMPILER_ID MATCHES "Clang" AND (NOT CMAKE_CXX_COMPILER_VERSION VERSION_LESS 3.9))
+		if (CMAKE_C_COMPILER_ID MATCHES "Clang" AND (NOT CMAKE_C_COMPILER_VERSION VERSION_LESS 3.9))
 			check_compiler_flags_output("-Werror -Wshadow -Wno-error=cpp" COMPILER_TYPE C   OUTPUT_FLAGS "-Wshadow" OUTPUT_VARIABLE _supported_c_compiler_flags APPEND)
 
 			# -Wno-shadow-field-in-constructor (Clang 3.9+)
@@ -565,8 +654,8 @@ macro(CONFIGURE_WZ_COMPILER_WARNINGS)
 #		check_compiler_flags_output("-Werror -Wuseless-cast -Wno-error=cpp" COMPILER_TYPE CXX OUTPUT_FLAGS "-Wuseless-cast" OUTPUT_VARIABLE _supported_cxx_compiler_flags APPEND)
 
 		# -Wnull-dereference		(GCC 6.0+, Clang 3.2+)
-		# Temporary: Do not enable for GCC 12+ (issues with nlohmann::json + GCC 12.1 + Wnull-dereference)
-		if (NOT CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_VERSION VERSION_LESS 12.0)
+		# Do not enable for GCC, which has various false-positives - especially GCC 12+ (issues with nlohmann::json + GCC 12.1 + Wnull-dereference, vector.resize, etc)
+		if (NOT CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
 		check_compiler_flags_output("-Werror -Wnull-dereference -Wno-error=cpp" COMPILER_TYPE C   OUTPUT_FLAGS "-Wnull-dereference" OUTPUT_VARIABLE _supported_c_compiler_flags APPEND)
 		check_compiler_flags_output("-Werror -Wnull-dereference -Wno-error=cpp" COMPILER_TYPE CXX OUTPUT_FLAGS "-Wnull-dereference" OUTPUT_VARIABLE _supported_cxx_compiler_flags APPEND)
 		endif()
@@ -646,6 +735,14 @@ macro(CONFIGURE_WZ_COMPILER_WARNINGS)
 		check_compiler_flags_output("-Werror -Wformat-truncation -Wno-error=cpp" COMPILER_TYPE C   OUTPUT_FLAGS "-Wno-format-truncation" OUTPUT_VARIABLE _supported_c_compiler_flags APPEND)
 		check_compiler_flags_output("-Werror -Wformat-truncation -Wno-error=cpp" COMPILER_TYPE CXX OUTPUT_FLAGS "-Wno-format-truncation" OUTPUT_VARIABLE _supported_cxx_compiler_flags APPEND)
 
+		# Disable -Warray-bounds on GCC 11-13+
+		if (CMAKE_C_COMPILER_ID STREQUAL "GNU" AND (NOT CMAKE_C_COMPILER_VERSION VERSION_LESS 11))
+			check_compiler_flags_output("-Werror -Wno-array-bounds -Wno-error=cpp" COMPILER_TYPE C   OUTPUT_FLAGS "-Wno-array-bounds" OUTPUT_VARIABLE _supported_c_compiler_flags APPEND)
+		endif()
+		if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND (NOT CMAKE_CXX_COMPILER_VERSION VERSION_LESS 11))
+			check_compiler_flags_output("-Werror -Wno-array-bounds -Wno-error=cpp" COMPILER_TYPE CXX OUTPUT_FLAGS "-Wno-array-bounds" OUTPUT_VARIABLE _supported_cxx_compiler_flags APPEND)
+		endif()
+
 		message( STATUS "Supported C compiler_flags=${_supported_c_compiler_flags}" )
 		message( STATUS "Supported CXX compiler_flags=${_supported_cxx_compiler_flags}" )
 
@@ -657,8 +754,6 @@ macro(CONFIGURE_WZ_COMPILER_WARNINGS)
 
 	endif()
 endmacro(CONFIGURE_WZ_COMPILER_WARNINGS)
-
-add_definitions("-DHAVE_CONFIG_H")
 
 # CMAKE_CURRENT_BINARY_DIR should come before the current source directory
 # so that any build products are preferentially included over in-source build
@@ -729,8 +824,14 @@ CHECK_FUNCTION_EXISTS(gettext HAVE_GETTEXT)
 CHECK_FUNCTION_EXISTS(iconv HAVE_ICONV)
 CHECK_CXX_SYMBOL_EXISTS(strlcat "string.h" HAVE_SYSTEM_STRLCAT)
 CHECK_CXX_SYMBOL_EXISTS(strlcpy "string.h" HAVE_SYSTEM_STRLCPY)
-CHECK_CXX_SYMBOL_EXISTS(strlcat "string.h" HAVE_VALID_STRLCAT)
-CHECK_CXX_SYMBOL_EXISTS(strlcpy "string.h" HAVE_VALID_STRLCPY)
+if (NOT EMSCRIPTEN)
+	CHECK_CXX_SYMBOL_EXISTS(strlcpy "string.h" HAVE_VALID_STRLCPY)
+	CHECK_CXX_SYMBOL_EXISTS(strlcat "string.h" HAVE_VALID_STRLCAT)
+else()
+	# Emscripten's implementation currently leads to ASAN errors, so disable the built-in and use WZ's custom backup implementation
+	set(HAVE_VALID_STRLCPY OFF CACHE BOOL "Have valid strlcpy" FORCE)
+	set(HAVE_VALID_STRLCAT OFF CACHE BOOL "Have valid strlcat" FORCE)
+endif()
 CHECK_CXX_SYMBOL_EXISTS(putenv "stdlib.h" HAVE_PUTENV)
 CHECK_CXX_SYMBOL_EXISTS(setenv "stdlib.h" HAVE_SETENV)
 CHECK_CXX_SYMBOL_EXISTS(posix_spawn "spawn.h" HAVE_POSIX_SPAWN)
@@ -754,7 +855,6 @@ else()
 endif()
 
 set(WZ_BINDIR "${CMAKE_INSTALL_BINDIR}")
-set(WZ_LOCALEDIR "${CMAKE_INSTALL_LOCALEDIR}")
 message(STATUS "WZ_BINDIR=\"${WZ_BINDIR}\"")
 message(STATUS "WZ_LOCALEDIR=\"${WZ_LOCALEDIR}\"")
 function(CHECK_IS_ABSOLUTE_PATH _var _output)
@@ -766,29 +866,11 @@ function(CHECK_IS_ABSOLUTE_PATH _var _output)
 endfunction()
 CHECK_IS_ABSOLUTE_PATH(WZ_DATADIR WZ_DATADIR_ISABSOLUTE)
 CHECK_IS_ABSOLUTE_PATH(WZ_LOCALEDIR WZ_LOCALEDIR_ISABSOLUTE)
-CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/src/config.h.in ${CMAKE_CURRENT_BINARY_DIR}/config.h)
-
-# Attempt to find Miniupnpc (minimum supported API version = 9)
-# NOTE: This is not available on every platform / distro
-find_package(Miniupnpc 9)
-if(MINIUPNPC_FOUND)
-	set(WZ_USE_IMPORTED_MINIUPNPC ON)
-else()
-	message(STATUS "Using in-tree Miniupnpc")
-	set(WZ_USE_IMPORTED_MINIUPNPC OFF)
-	SET(UPNPC_BUILD_STATIC ON CACHE BOOL "miniupnpc - Build static library" FORCE)
-	SET(UPNPC_BUILD_SHARED OFF CACHE BOOL "miniupnpc - Build shared library" FORCE)
-	SET(UPNPC_BUILD_TESTS OFF CACHE BOOL "miniupnpc - Build tests" FORCE)
-	SET(UPNPC_BUILD_SAMPLE OFF CACHE BOOL "miniupnpc - Build samples" FORCE)
-	SET(UPNPC_NO_INSTALL TRUE CACHE BOOL "miniupnpc - Disable installation" FORCE)
-	add_subdirectory(3rdparty/miniupnp/miniupnpc)
-	set_property(TARGET libminiupnpc-static PROPERTY FOLDER "3rdparty")
-	if(CMAKE_SYSTEM_NAME MATCHES "Windows" AND (MINGW OR ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang" AND NOT MSVC)))
-		target_compile_options(miniupnpc-private INTERFACE -Wno-macro-redefined)
-	endif()
-endif()
 
 add_subdirectory(3rdparty)
+
+# This should come after `add_subdirectory(3rdparty)` to capture submodule-specific vars
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/config.h.in" "${CMAKE_CURRENT_BINARY_DIR}/wz2100-generated-config.h")
 
 # Determine distribution license
 set(WZ_DIST_LICENSE "${CMAKE_CURRENT_BINARY_DIR}/dist/COPYING")
@@ -807,7 +889,6 @@ add_subdirectory(build_tools)
 add_subdirectory(data)
 add_subdirectory(lib)
 add_subdirectory(doc)
-add_subdirectory(icons)
 add_subdirectory(po)
 add_subdirectory(src)
 add_subdirectory(pkg)

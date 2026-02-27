@@ -21,6 +21,28 @@
 			"Requires Cyborg factory to produce"
 		]
 	},
+	"RES_CYW_CN2": {
+		"id": "RES_CYW_CN2",
+		"imdName": "MICAPSUL.pie",
+		"sequenceName": "res_droid.ogg",
+		"text": [
+			"New Cyborg Available",
+			"Armed with Cyborg Hyper Velocity Cannon",
+			"Body Points: Medium",
+			"Requires Cyborg factory to produce"
+		]
+	},
+	"RES_CYW_FL2": {
+		"id": "RES_CYW_FL2",
+		"imdName": "MICAPSUL.pie",
+		"sequenceName": "res_droid.ogg",
+		"text": [
+			"New Cyborg Available",
+			"Armed with Cyborg Thermite flamer",
+			"Body Points: Medium",
+			"Requires Cyborg factory to produce"
+		]
+	},
 	"RES_CYW_MG4": {
 		"id": "RES_CYW_MG4",
 		"imdName": "MICAPSUL.pie",
@@ -28,6 +50,17 @@
 		"text": [
 			"New Cyborg Available",
 			"Armed with Cyborg Assault Gun",
+			"Body Points: Medium",
+			"Requires Cyborg factory to produce"
+		]
+	},
+	"RES_CYW_RK2": {
+		"id": "RES_CYW_RK2",
+		"imdName": "MICAPSUL.pie",
+		"sequenceName": "res_droid.ogg",
+		"text": [
+			"New Cyborg Available",
+			"Armed with Cyborg Tank Killer rocket",
 			"Body Points: Medium",
 			"Requires Cyborg factory to produce"
 		]
@@ -250,6 +283,17 @@
 			"New armored construction",
 			"Increases Body Points",
 			"All half-tracks upgraded automatically"
+		]
+	},
+	"RES_PB_RotMG": {
+		"id": "RES_PB_RotMG",
+		"imdName": "MICAPSUL.pie",
+		"sequenceName": "res_struttech.ogg",
+		"text": [
+			"New Defensive Structure Available",
+			"Armored bunker with Assault Gun",
+			"Automatically targets enemies in range",
+			"Defensive Strength: High"
 		]
 	},
 	"RES_ST_FCY4": {
@@ -753,7 +797,7 @@
 		"sequenceName": "res_weapons.ogg",
 		"text": [
 			"Mortar Upgrade",
-			"High Explosive Armor-Piercing Shells",
+			"High Explosive Soft Casing Shells",
 			"Increases Mortar damage",
 			"All mortars upgraded automatically"
 		]

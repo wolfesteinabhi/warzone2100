@@ -26,11 +26,15 @@
 
 #include "droiddef.h"
 
-void clearDisplayMultiJoiningStatusCache();						// Call when bDisplayMultiJoiningStatus is set to 0
-bool intDisplayMultiJoiningStatus(UBYTE joinCount);
+#include "lib/framework/crc.h"
+
+#include <nonstd/optional.hpp>
+using nonstd::optional;
+using nonstd::nullopt;
+
 void recvPlayerLeft(NETQUEUE queue);
 bool MultiPlayerLeave(UDWORD playerIndex);						// A player has left the game.
-bool MultiPlayerJoin(UDWORD playerIndex);						// A Player has joined the game.
+bool MultiPlayerJoin(UDWORD playerIndex, optional<EcKey::Key> verifiedJoinIdentity = nullopt);	// A Player has joined the game.
 void setupNewPlayer(UDWORD player);		// stuff to do when player joins.
 void clearPlayer(UDWORD player, bool quietly);     // wipe a player off the face of the earth.
 void handlePlayerLeftInGame(UDWORD player);		   // handle a player leaving in-game
